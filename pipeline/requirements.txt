@@ -1,0 +1,4 @@
+ultralytics==8.2.87
+opencv-python-headless==4.10.0.84
+requests==2.32.3
+lapx>=0.5.2

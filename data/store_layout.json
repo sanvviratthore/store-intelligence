@@ -1,0 +1,135 @@
+{
+  "stores": [
+    {
+      "store_id": "ST1008",
+      "name": "Brigade_Bangalore",
+      "city": "Bangalore",
+      "open_hours": {
+        "open": "10:00",
+        "close": "22:00"
+      },
+      "cameras": [
+        {
+          "camera_id": "CAM_ENTRY_01",
+          "file": "CAM_3.mp4",
+          "type": "entry_exit",
+          "description": "Glass door entry/exit threshold"
+        },
+        {
+          "camera_id": "CAM_FLOOR_01",
+          "file": "CAM_1.mp4",
+          "type": "main_floor",
+          "description": "Skincare wall - EB Korean, Face Shop, Good Vibes, DermDoc, Minimalist"
+        },
+        {
+          "camera_id": "CAM_FLOOR_02",
+          "file": "CAM_2.mp4",
+          "type": "main_floor",
+          "description": "Makeup wall - Maybelline, Faces Canada, Lakme, Swiss Beauty, Renee NY Bae"
+        },
+        {
+          "camera_id": "CAM_BILLING_01",
+          "file": "CAM_5.mp4",
+          "type": "billing",
+          "description": "Cash counter with POS terminal"
+        },
+        {
+          "camera_id": "CAM_STOCK_01",
+          "file": "CAM_4.mp4",
+          "type": "stockroom",
+          "description": "Backroom stockroom - staff only"
+        }
+      ],
+      "zones": [
+        {
+          "zone_id": "ENTRY",
+          "sku_zone": null,
+          "camera_id": "CAM_ENTRY_01",
+          "bbox": [
+            0,
+            400,
+            1920,
+            1080
+          ]
+        },
+        {
+          "zone_id": "SKINCARE",
+          "sku_zone": "SKINCARE",
+          "camera_id": "CAM_FLOOR_01",
+          "bbox": [
+            0,
+            0,
+            960,
+            1080
+          ]
+        },
+        {
+          "zone_id": "SUNCARE",
+          "sku_zone": "SUNSCREEN",
+          "camera_id": "CAM_FLOOR_01",
+          "bbox": [
+            960,
+            0,
+            1920,
+            1080
+          ]
+        },
+        {
+          "zone_id": "MAKEUP",
+          "sku_zone": "FACE_MAKEUP",
+          "camera_id": "CAM_FLOOR_02",
+          "bbox": [
+            480,
+            0,
+            1920,
+            1080
+          ]
+        },
+        {
+          "zone_id": "LIPS_EYES",
+          "sku_zone": "LIPS_EYES",
+          "camera_id": "CAM_FLOOR_02",
+          "bbox": [
+            0,
+            400,
+            960,
+            1080
+          ]
+        },
+        {
+          "zone_id": "FRAGRANCE",
+          "sku_zone": "FRAGRANCE",
+          "camera_id": "CAM_FLOOR_01",
+          "bbox": [
+            0,
+            400,
+            480,
+            1080
+          ]
+        },
+        {
+          "zone_id": "BILLING",
+          "sku_zone": null,
+          "camera_id": "CAM_BILLING_01",
+          "bbox": [
+            0,
+            0,
+            1920,
+            1080
+          ]
+        },
+        {
+          "zone_id": "STOCKROOM",
+          "sku_zone": null,
+          "camera_id": "CAM_STOCK_01",
+          "bbox": [
+            0,
+            0,
+            1920,
+            1080
+          ]
+        }
+      ]
+    }
+  ]
+}

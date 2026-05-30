@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Purplle Store Intelligence</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #0f0f1a; color: #e0e0ff; font-family: 'Segoe UI', sans-serif; min-height: 100vh; }
+
+  header {
+    background: linear-gradient(135deg, #1a0a2e, #2d1b69);
+    padding: 16px 24px;
+    display: flex; align-items: center; justify-content: space-between;
+    border-bottom: 1px solid #4a2fa0;
+  }
+  header h1 { font-size: 1.3rem; color: #c084fc; letter-spacing: 1px; }
+  header .subtitle { font-size: 0.8rem; color: #888; margin-top: 2px; }
+  .live-badge {
+    display: flex; align-items: center; gap: 8px;
+    background: #1a2a1a; border: 1px solid #2a5a2a;
+    padding: 6px 14px; border-radius: 20px; font-size: 0.8rem; color: #4ade80;
+  }
+  .live-dot { width: 8px; height: 8px; background: #4ade80; border-radius: 50%; animation: pulse 1.5s infinite; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+  .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; padding: 20px; }
+  .grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; padding: 0 20px 20px; }
+  .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; padding: 0 20px 20px; }
+
+  .card {
+    background: #16162a; border: 1px solid #2a2a4a;
+    border-radius: 12px; padding: 20px;
+  }
+  .card h2 { font-size: 0.75rem; color: #888; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px; }
+  .metric-value { font-size: 2.2rem; font-weight: 700; color: #c084fc; }
+  .metric-sub { font-size: 0.8rem; color: #666; margin-top: 4px; }
+
+  .good { color: #4ade80; }
+  .warn { color: #facc15; }
+  .bad  { color: #f87171; }
+
+  .section-title {
+    font-size: 0.85rem; color: #888; text-transform: uppercase;
+    letter-spacing: 1px; padding: 0 20px 8px;
+  }
+
+  table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+  th { color: #888; font-weight: 500; text-align: left; padding: 6px 0; border-bottom: 1px solid #2a2a4a; }
+  td { padding: 8px 0; border-bottom: 1px solid #1a1a2a; }
+
+  .bar-wrap { display: flex; align-items: center; gap: 8px; }
+  .bar-bg { flex: 1; background: #1a1a2a; border-radius: 4px; height: 8px; }
+  .bar-fill { height: 8px; border-radius: 4px; background: linear-gradient(90deg, #7c3aed, #c084fc); transition: width 0.5s; }
+
+  .funnel-stage {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 14px; margin: 6px 0; border-radius: 8px;
+    background: #1a1a30; border-left: 3px solid #7c3aed;
+  }
+  .funnel-stage .name { color: #c0b0ff; font-size: 0.875rem; }
+  .funnel-stage .count { font-size: 1.2rem; font-weight: 700; color: #e0e0ff; }
+  .funnel-stage .drop { font-size: 0.75rem; }
+
+  .anomaly {
+    padding: 12px; margin: 8px 0; border-radius: 8px;
+    border-left: 3px solid;
+  }
+  .anomaly.CRITICAL { border-color: #f87171; background: #2a1010; }
+  .anomaly.WARN     { border-color: #facc15; background: #2a2010; }
+  .anomaly.INFO     { border-color: #60a5fa; background: #101a2a; }
+  .anomaly .sev     { font-size: 0.7rem; font-weight: 700; letter-spacing: 1px; }
+  .anomaly .desc    { font-size: 0.8rem; color: #ccc; margin-top: 4px; }
+  .anomaly .action  { font-size: 0.75rem; color: #888; margin-top: 4px; font-style: italic; }
+
+  .health-ok   { color: #4ade80; }
+  .health-stale { color: #f87171; }
+
+  .refresh-info { text-align: center; padding: 12px; font-size: 0.75rem; color: #444; }
+  #last-update { color: #666; }
+
+  .no-data { color: #444; font-style: italic; font-size: 0.85rem; padding: 12px 0; }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>🏪 Purplle Store Intelligence</h1>
+    <div class="subtitle">Brigade Road, Bangalore · ST1008</div>
+  </div>
+  <div class="live-badge">
+    <div class="live-dot"></div>
+    LIVE · <span id="last-update">--</span>
+  </div>
+</header>
+
+<!-- KPI Cards -->
+<div class="grid" id="kpi-grid">
+  <div class="card"><h2>Unique Visitors</h2><div class="metric-value" id="kpi-visitors">--</div><div class="metric-sub">customer sessions</div></div>
+  <div class="card"><h2>Conversion Rate</h2><div class="metric-value" id="kpi-conversion">--</div><div class="metric-sub">visitors who purchased</div></div>
+  <div class="card"><h2>Queue Depth</h2><div class="metric-value" id="kpi-queue">--</div><div class="metric-sub">at billing counter</div></div>
+  <div class="card"><h2>Abandonment Rate</h2><div class="metric-value" id="kpi-abandon">--</div><div class="metric-sub">left queue without purchase</div></div>
+</div>
+
+<!-- Funnel + Anomalies -->
+<div class="grid-2">
+  <div class="card">
+    <h2>🔻 Conversion Funnel</h2>
+    <div id="funnel-container"><div class="no-data">Loading...</div></div>
+  </div>
+  <div class="card">
+    <h2>⚠ Active Anomalies</h2>
+    <div id="anomaly-container"><div class="no-data">Loading...</div></div>
+  </div>
+</div>
+
+<!-- Heatmap + Health -->
+<div class="grid-2">
+  <div class="card">
+    <h2>🗺 Zone Heatmap</h2>
+    <div id="heatmap-container"><div class="no-data">Loading...</div></div>
+  </div>
+  <div class="card">
+    <h2>💚 System Health</h2>
+    <div id="health-container"><div class="no-data">Loading...</div></div>
+  </div>
+</div>
+
+<div class="refresh-info">Auto-refreshing every 5 seconds · <span id="last-update-bottom">--</span></div>
+
+<script>
+const STORE = 'ST1008';
+const BASE  = '';  // same origin
+
+async function fetchJSON(path) {
+  const r = await fetch(BASE + path);
+  return r.json();
+}
+
+function colorRate(v) {
+  if (v >= 0.2) return 'good';
+  if (v >= 0.1) return 'warn';
+  return 'bad';
+}
+
+async function updateMetrics() {
+  try {
+    const d = await fetchJSON(`/stores/${STORE}/metrics`);
+    document.getElementById('kpi-visitors').textContent = d.unique_visitors ?? 0;
+
+    const cr = d.conversion_rate ?? 0;
+    const crEl = document.getElementById('kpi-conversion');
+    crEl.textContent = (cr * 100).toFixed(1) + '%';
+    crEl.className = 'metric-value ' + colorRate(cr);
+
+    const qd = d.current_queue_depth ?? 0;
+    const qdEl = document.getElementById('kpi-queue');
+    qdEl.textContent = qd;
+    qdEl.className = 'metric-value ' + (qd > 3 ? 'bad' : qd > 1 ? 'warn' : 'good');
+
+    const ar = d.abandonment_rate ?? 0;
+    const arEl = document.getElementById('kpi-abandon');
+    arEl.textContent = (ar * 100).toFixed(1) + '%';
+    arEl.className = 'metric-value ' + (ar > 0.4 ? 'bad' : ar > 0.2 ? 'warn' : 'good');
+  } catch(e) { console.error('metrics', e); }
+}
+
+async function updateFunnel() {
+  try {
+    const d = await fetchJSON(`/stores/${STORE}/funnel`);
+    const stages = d.funnel ?? [];
+    if (!stages.length) { document.getElementById('funnel-container').innerHTML = '<div class="no-data">No data</div>'; return; }
+    const html = stages.map(s => {
+      const dropColor = s.drop_off_pct > 50 ? 'bad' : s.drop_off_pct > 20 ? 'warn' : 'good';
+      const drop = s.drop_off_pct > 0 ? `<span class="drop ${dropColor}">↓${s.drop_off_pct.toFixed(1)}%</span>` : '';
+      return `<div class="funnel-stage">
+        <span class="name">${s.stage}</span>
+        <span class="count">${s.visitors}</span>
+        ${drop}
+      </div>`;
+    }).join('');
+    document.getElementById('funnel-container').innerHTML = html;
+  } catch(e) { console.error('funnel', e); }
+}
+
+async function updateHeatmap() {
+  try {
+    const d = await fetchJSON(`/stores/${STORE}/heatmap`);
+    const zones = d.zones ?? [];
+    if (!zones.length) { document.getElementById('heatmap-container').innerHTML = '<div class="no-data">No data</div>'; return; }
+    const rows = zones.map(z => {
+      const dwell = (z.avg_dwell_ms / 1000).toFixed(0);
+      return `<tr>
+        <td>${z.zone_id}</td>
+        <td><div class="bar-wrap"><div class="bar-bg"><div class="bar-fill" style="width:${z.normalised_score}%"></div></div><span style="font-size:0.75rem;color:#888">${z.normalised_score}</span></div></td>
+        <td style="color:#c084fc">${z.visit_count}</td>
+        <td style="color:#888">${dwell}s</td>
+      </tr>`;
+    }).join('');
+    const conf = d.data_confidence ?? '?';
+    const confColor = conf === 'HIGH' ? '#4ade80' : '#facc15';
+    document.getElementById('heatmap-container').innerHTML = `
+      <table><thead><tr><th>Zone</th><th>Score</th><th>Visits</th><th>Avg Dwell</th></tr></thead>
+      <tbody>${rows}</tbody></table>
+      <div style="margin-top:10px;font-size:0.75rem;color:${confColor}">Data confidence: ${conf}</div>`;
+  } catch(e) { console.error('heatmap', e); }
+}
+
+async function updateAnomalies() {
+  try {
+    const d = await fetchJSON(`/stores/${STORE}/anomalies`);
+    const list = d.active_anomalies ?? [];
+    if (!list.length) {
+      document.getElementById('anomaly-container').innerHTML = '<div class="no-data good">✓ No active anomalies</div>';
+      return;
+    }
+    const html = list.map(a => `
+      <div class="anomaly ${a.severity}">
+        <div class="sev">${a.severity} · ${a.anomaly_id}</div>
+        <div class="desc">${a.description}</div>
+        <div class="action">→ ${a.suggested_action}</div>
+      </div>`).join('');
+    document.getElementById('anomaly-container').innerHTML = html;
+  } catch(e) { console.error('anomalies', e); }
+}
+
+async function updateHealth() {
+  try {
+    const d = await fetchJSON('/health');
+    const statusClass = d.status === 'healthy' ? 'health-ok' : 'health-stale';
+    let html = `<div class="${statusClass}" style="font-size:1.1rem;font-weight:700;margin-bottom:10px">${d.status?.toUpperCase()}</div>`;
+    html += `<div style="font-size:0.85rem;color:#888;margin-bottom:12px">Total events ingested: <span style="color:#c084fc">${d.total_events_ingested}</span></div>`;
+    (d.stores ?? []).forEach(s => {
+      const sc = s.status === 'OK' ? 'health-ok' : 'health-stale';
+      html += `<div style="font-size:0.8rem;margin:4px 0">
+        <span class="${sc}">● ${s.status}</span>
+        <span style="color:#888"> · lag ${s.lag_seconds?.toFixed(0)}s</span>
+      </div>`;
+    });
+    document.getElementById('health-container').innerHTML = html;
+  } catch(e) { console.error('health', e); }
+}
+
+async function refresh() {
+  await Promise.all([updateMetrics(), updateFunnel(), updateHeatmap(), updateAnomalies(), updateHealth()]);
+  const now = new Date().toLocaleTimeString();
+  document.getElementById('last-update').textContent = now;
+  document.getElementById('last-update-bottom').textContent = `Last updated: ${now}`;
+}
+
+refresh();
+setInterval(refresh, 5000);
+</script>
+</body>
+</html>
