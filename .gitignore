@@ -1,0 +1,7 @@
+echo clips/ > .gitignore
+echo data/events.db >> .gitignore
+echo data/events.jsonl >> .gitignore
+echo yolov8n.pt >> .gitignore
+echo __pycache__/ >> .gitignore
+echo *.pyc >> .gitignore
+echo *.db >> .gitignore
