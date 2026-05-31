@@ -143,3 +143,26 @@ The single store in the dataset is: `ST1008`
 - **Idempotent ingest** — Safe to run the detection pipeline multiple times; duplicate `event_id`s are silently skipped.
 - **Staff exclusion** — Staff events are stored with `is_staff=true` and excluded at query time (not at ingest), preserving the full audit trail.
 - See `docs/DESIGN.md` for full architecture and `docs/CHOICES.md` for decision rationale.
+
+## Live Dashboard
+
+Web dashboard available at: **http://localhost:8000**
+
+Auto-refreshes every 5 seconds showing:
+- Live visitor count and conversion rate
+- Conversion funnel with drop-off %
+- Zone heatmap normalised 0-100
+- Active anomalies with severity and suggested actions
+- System health and feed lag
+
+Terminal dashboard (alternative):
+```bash
+pip install rich
+python -m dashboard.live
+```
+
+## One-Command Pipeline
+
+```bash
+bash pipeline/run.sh ./clips http://localhost:8000
+```

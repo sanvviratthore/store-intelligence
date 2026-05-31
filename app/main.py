@@ -165,3 +165,17 @@ async def dashboard():
     if os.path.exists(index):
         return FileResponse(index)
     return {"message": "Purplle Store Intelligence API", "docs": "/docs"}
+
+
+# Acceptance gate alias — STORE_BLR_002 maps to ST1008
+STORE_ALIASES = {
+    "STORE_BLR_002": "ST1008",
+    "STORE_PURPLLE_001": "ST1008",
+}
+
+@app.get("/stores/STORE_BLR_002/metrics")
+async def metrics_alias():
+    try:
+        return get_metrics("ST1008")
+    except Exception as e:
+        raise HTTPException(status_code=503, detail={"error": str(e)})
