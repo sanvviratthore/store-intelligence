@@ -2,67 +2,76 @@
 
 ## Decision 1: Detection Model — YOLOv8n
 
-### Options Considered
-| Model | Pros | Cons |
-|-------|------|------|
-| YOLOv8n | Fastest, CPU-friendly, Ultralytics ecosystem includes ByteTrack | Lower accuracy than larger variants |
-| YOLOv8m | Better accuracy, handles occlusion better | ~4× slower on CPU — unacceptable for 5 clips |
-| RT-DETR | Transformer-based, better at groups | No built-in tracker, much heavier |
-| MediaPipe Pose | Lightweight | Not designed for tracking, no person Re-ID |
-| GPT-4V / Gemini Vision | Could handle staff detection, zone classification | Per-frame API cost, latency ~2s/frame, offline dependency |
+### Options I Considered
+
+| Model | Why I considered it | Why I didn't use it |
+|-------|---------------------|---------------------|
+| YOLOv8n | Fastest, CPU-friendly, ByteTrack built in | Lower accuracy than larger variants |
+| YOLOv8m | Better occlusion handling | ~4x slower on CPU — 2.3min clip would take 30+ min |
+| RT-DETR | Transformer-based, better group detection | No built-in tracker, much heavier |
+| MediaPipe | Very lightweight | Not designed for tracking, no persistent IDs |
+| GPT-4V / Gemini Vision | Could read zone signage, classify staff by context | 2s per frame latency, offline requirement fails |
 
 ### What AI Suggested
-Claude suggested YOLOv8m as a balance between speed and accuracy, and also floated GPT-4V for zone classification because the footage has clear brand signage that a VLM could read. I evaluated the VLM route: the latency was prohibitive for real-time use and the cost model doesn't fit an offline challenge submission.
+
+Claude suggested YOLOv8m as a balance between speed and accuracy, and also suggested GPT-4V for zone classification since the footage has clear brand signage that a VLM could read. I tested the VLM idea — for zone classification it actually made sense since CAM_1 and CAM_2 clearly show brand names on the shelves. But the latency was prohibitive for a CPU-only machine processing 15,000+ frames.
 
 ### What I Chose and Why
-**YOLOv8n** with ByteTrack (built into Ultralytics). Reasons:
-1. CPU-only constraint — no GPU available on the submission machine
-2. The footage is 1080p at 30fps but only ~2.3 min per clip; YOLOv8n at every 5th frame processes ~840 frames per clip in under 5 minutes on CPU
-3. Person detection (class 0) at 1080p with retail-level crowd density is well within YOLOv8n's capability — the challenging cases (groups, occlusion) are handled by ByteTrack's IoU-based association rather than the detector
-4. The Ultralytics package bundles ByteTrack — one dependency, one install
 
-**Trade-off acknowledged**: YOLOv8n will miss some partially-occluded persons. The system handles this by emitting low-confidence events rather than dropping them (confidence is stored and surfaced in the API).
+**YOLOv8n** with ByteTrack. My machine has no GPU. At every 5th frame, YOLOv8n processes roughly 840 frames per 2.3-minute clip in about 8 minutes on CPU. YOLOv8m would have taken over 30 minutes per clip — not practical for a submission deadline.
+
+The trade-off I accepted: YOLOv8n will miss some partially-occluded persons. I handled this by storing confidence scores on every event and surfacing data_confidence: LOW in the heatmap when sessions are below 20. Low confidence events are stored, not dropped — the reviewer can see the confidence distribution in the raw events.
+
+**One thing I would change:** if I had a GPU, I would use YOLOv8m and add a proper OSNet Re-ID model instead of the position-based approach. The current Re-ID breaks when two people of similar build enter from the same direction within 30 seconds of each other.
 
 ---
 
 ## Decision 2: Event Schema Design
 
-### Options Considered
-- **Option A**: Flat schema, one row per detection (every frame)
-- **Option B**: Session-level aggregation (one record per visit)
-- **Option C**: Typed event stream (the chosen approach) — discrete events at meaningful moments
+### Options I Considered
+
+- **Option A — Flat schema, one row per detection frame:** Maximum raw data, but storage explodes (30fps × 5 clips × 2.3 min = ~20,000 rows for a single clip) and querying session-level metrics becomes expensive.
+- **Option B — Session-level aggregation at ingest:** One record per visit session. Simpler queries but destroys the raw signal — can't retroactively compute queue depth at a specific timestamp or detect abandonment.
+- **Option C — Typed event stream:** Discrete events at meaningful moments (ENTRY, ZONE_ENTER, ZONE_DWELL, etc.). This is what I chose.
 
 ### What AI Suggested
-Claude suggested Option B (session-level aggregation) as simpler to query. I disagreed: aggregating at ingest time loses the raw signal needed for anomaly detection. If I aggregate immediately, I can't retroactively compute queue depth at a specific timestamp or detect abandonment (which requires knowing the time between BILLING_QUEUE_JOIN and EXIT with no POS correlation).
+
+Claude initially suggested Option B (session aggregation) as simpler to query. I disagreed. If I aggregate at ingest, I lose the ability to detect BILLING_QUEUE_ABANDON — which requires knowing the time gap between a BILLING_QUEUE_JOIN and an EXIT without a following POS transaction. You can only compute that from the raw event sequence, not from a pre-aggregated session record.
 
 ### What I Chose and Why
-**Typed event stream (Option C)**, matching the required schema exactly. Each event carries:
-- `event_id` (UUIDv4): globally unique, primary key for idempotency
-- `visitor_id`: per-session Re-ID token, reused on REENTRY
-- `event_type`: from the defined catalogue (ENTRY, EXIT, ZONE_ENTER, etc.)
-- `timestamp`: derived from clip base timestamp + frame offset, not wall-clock time
-- `is_staff`: Boolean flag — stored on raw events, filtered at query time (not at ingest)
-- `confidence`: never suppressed, even for low-confidence detections — this lets the API surface data quality signals
 
-**Key design principle**: Staff events are stored with `is_staff=true` but not excluded at ingest. This means the raw events table is a complete audit trail. Exclusion happens at the SQL query layer in every metric computation. This makes the system easier to audit and allows re-classification if the staff detection model improves.
+**Typed event stream (Option C).** Key design principles I followed:
+
+1. **Staff flagged, not excluded at ingest.** is_staff=true events are stored. Every metric query filters them out in SQL. This means if my staff classifier makes a mistake, I can rerun metrics without reprocessing the video.
+
+2. **Confidence never suppressed.** A detection with confidence=0.15 still gets stored. The system degrades gracefully — low confidence events contribute to the heatmap with a LOW confidence flag rather than being silently dropped. This is honest about what the model actually saw.
+
+3. **event_id as UUIDv4 primary key.** Makes ingest idempotent by design. The pipeline can be rerun against the same clips without duplicating events.
+
+4. **Timestamps from video OSD, not wall clock.** The clips have an embedded timestamp (10/04/2026 20:09). I use this as the base and add frame offset. This means events from different camera clips have coherent timestamps even when processed hours apart.
 
 ---
 
 ## Decision 3: API Storage — SQLite vs PostgreSQL
 
-### Options Considered
+### Options I Considered
+
 | Option | Pros | Cons |
 |--------|------|------|
-| SQLite | Zero external deps, `docker compose up` trivially satisfied, sufficient for clip volume | Not suitable for 40-store concurrent writes at production scale |
-| PostgreSQL | Production-grade, concurrent writes, better query planner | Requires separate container, adds complexity, overkill for challenge scope |
-| Redis + PostgreSQL | Real-time queue depth from Redis, analytics from Postgres | Two external services, significant operational complexity |
+| SQLite | Zero dependencies, docker compose up works instantly | Single-writer lock, not suitable for concurrent production writes |
+| PostgreSQL | Production-grade, concurrent writes, better query planner | Extra container, startup race conditions, volume permissions on Windows |
+| Redis + PostgreSQL | Real-time queue depth from Redis, analytics from Postgres | Two external services, major complexity increase |
 
 ### What AI Suggested
-Claude recommended PostgreSQL from the start, citing concurrent write safety. It was right about the production argument. However, it also noted that for a challenge submission where the acceptance gate requires `docker compose up` with no manual steps, SQLite removes an entire failure mode (Postgres container failing to start, volume permissions, connection strings).
+
+Claude recommended PostgreSQL from the start, citing concurrent write safety and better indexing for time-series queries. It was right about the production argument.
 
 ### What I Chose and Why
-**SQLite** for the submission, with a clear migration path documented.
 
-The event volume from 5 × 2.3-minute clips is at most ~10,000 events. SQLite handles this trivially. The acceptance gate is harder to fail with SQLite. The API is structured so that replacing the SQLite connection in `database.py` with a PostgreSQL connection string is a single-file change — all queries use standard SQL with no SQLite-specific syntax.
+**SQLite** for this submission, with a documented migration path.
 
-**What breaks at scale (honest answer)**: At 40 live stores sending events in real-time, the first thing that breaks is SQLite's single-writer lock. Concurrent ingest from multiple pipeline instances would serialize and create a backlog. The fix is PostgreSQL with connection pooling (pgBouncer) and a time-series partitioned events table by `(store_id, day)`. Metric queries would move to pre-aggregated materialized views refreshed every 60 seconds.
+The event volume from 5 clips (618 events) fits trivially in SQLite. More importantly, the acceptance gate requires docker compose up with zero manual steps. On Windows specifically (which is my development machine), getting a Postgres container to start cleanly with the right volume permissions is a known pain point. SQLite eliminates that entire failure mode.
+
+**What breaks at scale (honest answer):** At 40 live stores sending events concurrently, the first thing that breaks is SQLite's global write lock. Two pipeline instances trying to ingest simultaneously will serialize and create a backlog. The fix is PostgreSQL with a partitioned events table by (store_id, date) and pre-aggregated materialized views refreshed every 60 seconds for the metrics endpoints. The current code is structured so this migration is a single-file change in database.py — all queries use standard SQL with no SQLite-specific syntax.
+
+**Why I didn't add Postgres anyway:** Adding complexity I can't test properly under deadline pressure is worse than a known limitation I can explain clearly. A system that works simply is better than a system that almost works with unnecessary complexity.

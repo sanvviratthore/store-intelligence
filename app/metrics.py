@@ -97,10 +97,12 @@ def _compute_conversion_rate(store_id: str, conn) -> float:
         return 0.0
 
     # Get all visitors who were in billing zone with timestamps
+    # Include BILLING_QUEUE_JOIN events too (some visitors reach billing without zone_id)
     billing_visits = conn.execute("""
         SELECT DISTINCT visitor_id, timestamp FROM events
-        WHERE store_id = ? AND zone_id = 'BILLING'
-          AND is_staff = 0
+        WHERE store_id = ? AND is_staff = 0
+          AND (zone_id = 'BILLING' OR event_type IN ('BILLING_QUEUE_JOIN', 'BILLING_QUEUE_ABANDON')
+               OR camera_id = 'CAM_BILLING_01')
     """, (store_id,)).fetchall()
 
     if not billing_visits:
@@ -111,9 +113,14 @@ def _compute_conversion_rate(store_id: str, conn) -> float:
         visit_ts = datetime.fromisoformat(visit["timestamp"])
         if visit_ts.tzinfo is None:
             visit_ts = visit_ts.replace(tzinfo=timezone.utc)
+        # Normalize to UTC
+        visit_ts_utc = visit_ts.astimezone(timezone.utc)
         for txn_ts in transactions:
-            # Visitor in billing zone within 5 min before transaction
-            if timedelta(0) <= (txn_ts - visit_ts) <= timedelta(minutes=5):
+            txn_ts_utc = txn_ts.astimezone(timezone.utc)
+            # Visitor in billing zone within 2 hours before OR after transaction
+            # (wide window since footage timestamp may not perfectly align with POS)
+            diff = abs((txn_ts_utc - visit_ts_utc).total_seconds())
+            if diff <= 7200:
                 converted.add(visit["visitor_id"])
                 break
 

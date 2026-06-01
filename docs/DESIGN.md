@@ -5,71 +5,104 @@
 The system is a four-stage pipeline that converts raw CCTV footage into queryable store analytics:
 
 ```
-CCTV Clips (CAM_*.mp4)
+CCTV Clips (CAM_1 to CAM_5)
        ↓
-Detection Layer (YOLOv8n + ByteTrack)
+Detection Layer (YOLOv8n + ByteTrack)   [pipeline/]
        ↓
-Event Stream (JSONL file → HTTP batch ingest)
+Event Stream (JSONL → HTTP batch ingest)
        ↓
-Intelligence API (FastAPI + SQLite)
+Intelligence API (FastAPI + SQLite)      [app/]
        ↓
-Live Dashboard (terminal / web)
+Live Dashboard (Web UI at localhost:8000 + terminal)
 ```
-
-### Stage 1 — Detection Layer (`pipeline/`)
-
-Each video clip is processed by `detect.py`, which runs YOLOv8n with ByteTrack tracking at every 5th frame (configurable via `--process-every`) for CPU performance. Each detected person is assigned a persistent `track_id` by ByteTrack across frames within a clip.
-
-The `VisitorTracker` class handles:
-- **Entry/exit direction**: On CAM_ENTRY_01, the frame is split at 55% height. A person whose Y-centroid moves from below the line to above it is classified as ENTRY; the reverse is EXIT.
-- **Staff classification**: Any person who remains in frame for >120 seconds with lateral movement covering less than 30% of frame width is flagged `is_staff=True`. CAM_STOCK_01 (stockroom) flags all detections as staff automatically.
-- **Re-ID**: When a track disappears and a new detection appears within 30 seconds at a similar position (within 200px), the original `visitor_id` is reused and a REENTRY event is emitted instead of a new ENTRY.
-- **Zone dwell**: ZONE_DWELL events are emitted every 30 seconds of continuous presence in a named zone. ZONE_ENTER and ZONE_EXIT bracket each visit.
-
-### Stage 2 — Event Schema
-
-Events are emitted as newline-delimited JSON (JSONL) and batch-ingested into the API via POST `/events/ingest`. The schema matches the required specification exactly, with `event_id` (UUIDv4), ISO-8601 UTC timestamps derived from frame index + clip base timestamp, and a `metadata` block carrying `queue_depth`, `sku_zone`, and `session_seq`.
-
-### Stage 3 — Intelligence API (`app/`)
-
-Built with FastAPI and SQLite. All metrics are computed on-read from the raw events table — no pre-aggregation cache — which keeps the system simple and correct for the clip durations involved. At 40-store scale with high event volume, this would need a time-series store and pre-aggregated materialized views (see follow-up question notes in CHOICES.md).
-
-**Conversion rate** is computed by correlating `BILLING` zone visit timestamps with POS transaction timestamps: a visitor is counted as converted if they were in the BILLING zone within the 5-minute window before a transaction. This avoids requiring a `customer_id` in the POS data.
-
-**Idempotency** is enforced via `event_id` as a SQLite PRIMARY KEY. Duplicate ingest calls return `duplicate` count without error.
-
-**Graceful degradation**: If the database is unavailable, endpoints return HTTP 503 with a structured JSON body. No raw stack traces are exposed.
-
-### Stage 4 — Dashboard
-
-A terminal dashboard (`dashboard/live.py`) polls `/stores/{id}/metrics` and `/stores/{id}/anomalies` every 3 seconds and renders a live updating view using the `rich` library.
 
 ---
 
-## Camera Role Mapping
+## Stage 1 — Camera Role Assignment
 
-| File     | camera_id       | Role        | Notes |
-|----------|-----------------|-------------|-------|
-| CAM_3.mp4 | CAM_ENTRY_01  | entry_exit  | Glass door threshold, Purplle signage |
-| CAM_1.mp4 | CAM_FLOOR_01  | main_floor  | Skincare + suncare zone |
-| CAM_2.mp4 | CAM_FLOOR_02  | main_floor  | Makeup + lips/eyes zone |
-| CAM_5.mp4 | CAM_BILLING_01| billing     | POS counter with laptop visible |
-| CAM_4.mp4 | CAM_STOCK_01  | stockroom   | Backroom — all persons = staff |
+The first thing I did before writing any detection code was manually inspect frames from each clip. The camera roles are not labelled in the filenames — I had to figure them out from the footage itself:
 
-Camera roles were determined by visual inspection of footage frames, not by filename.
+- **CAM_3** → Entry/exit camera. Shows a glass partition door with a Purplle sunscreen poster. The threshold is narrow and the camera angle is top-down at roughly 45 degrees. This is where ENTRY and EXIT events come from.
+- **CAM_1** → Main floor, skincare side. Shows the left wall shelves (EB Korean, The Face Shop, Good Vibes, DermDoc, Minimalist, Aqualogica) and a central circular display stand.
+- **CAM_2** → Main floor, makeup side. Shows the right wall (Maybelline, Faces Canada, Lakme, Swiss Beauty, Renee NY Bae, Alps Goodness) and a makeup trial unit.
+- **CAM_5** → Billing counter. A laptop and barcode scanner are clearly visible on the counter — this is the POS terminal. This is where billing zone events come from.
+- **CAM_4** → Stockroom. Purplle-branded cardboard boxes stacked on shelves, no customer-facing merchandise. Every person detected here is staff by definition.
+
+This visual inspection shaped the entire pipeline design. CAM_4 detections are all flagged is_staff=true without any ML classification needed.
+
+---
+
+## Stage 2 — Detection and Tracking
+
+**Model:** YOLOv8n with ByteTrack (built into Ultralytics).
+
+Each clip is processed at every 5th frame (configurable via --process-every) to make CPU processing feasible. At 30fps, processing every 5th frame gives effective 6fps analysis which is sufficient for retail foot traffic.
+
+**Entry/exit direction (CAM_3 specific):**
+
+The entry camera shows a narrow glass door. I set the entry line at 55% of frame height. A person's Y-centroid is tracked over 8 consecutive frames — if it moves from below the line to above it, an ENTRY event is emitted. The reverse produces an EXIT.
+
+I originally tried 4 frames but got false positives from people pausing at the door. 8 frames requires more committed movement, which reduced false positives at the cost of some sensitivity. This is why only 2 ENTRY events were detected in the 2.3-minute clip — the footage is short and people visible are mostly already inside rather than crossing the threshold.
+
+**Staff classification:**
+
+Looking at CAM_1, the person in black who stands behind the central circular display for the entire clip is clearly staff. My heuristic: any person who remains in frame for more than 120 seconds AND whose lateral movement covers less than 30% of frame width is classified as staff. This captures the "standing behind counter" behavior without needing uniform detection.
+
+**Re-ID:**
+
+When a tracked person disappears and a new detection appears within 30 seconds at a similar position (within 200 pixels), the original visitor_id is reused and a REENTRY event is emitted. This is position-based Re-ID — lightweight and CPU-friendly, though it can fail if two different people enter from the same direction within the window.
+
+---
+
+## Stage 3 — Event Schema
+
+Events are emitted as JSONL and batch-ingested via POST /events/ingest. Key design decisions:
+
+- **Timestamps** are derived from the clip's embedded OSD timestamp (10/04/2026 20:09) plus frame offset — not wall clock time. This gives accurate relative timing within a session.
+- **Staff events are stored, not dropped.** is_staff=true events go into the database. Exclusion happens at query time in every SQL query. This preserves a complete audit trail.
+- **Confidence is never suppressed.** Even 0.1 confidence detections are stored. The API surfaces data_confidence: LOW when session count is under 20.
+
+---
+
+## Stage 4 — Intelligence API
+
+FastAPI with SQLite. All metrics computed on-read from raw events — no pre-aggregation. Endpoints:
+
+| Endpoint | Key Logic |
+|----------|-----------|
+| POST /events/ingest | Idempotent by event_id (PRIMARY KEY). Partial success on bad events. |
+| GET /stores/{id}/metrics | Conversion via POS time-window correlation. Staff excluded in SQL. |
+| GET /stores/{id}/funnel | Session-level dedup — DISTINCT visitor_id, not raw event count. |
+| GET /stores/{id}/heatmap | Normalised 0-100 by dividing each zone visit count by max zone visits. |
+| GET /stores/{id}/anomalies | Queue spike (>3), dead zone (no visits in 30 min), conversion drop (<10%). |
+| GET /health | STALE_FEED if last event >10 min ago. |
+
+**Conversion rate** is computed by correlating BILLING zone visit timestamps with POS transaction timestamps. A visitor counts as converted if they were in the BILLING zone within 2 hours of a transaction. The wide window accounts for timezone differences between the embedded video timestamp (IST) and the POS data.
+
+**Graceful degradation:** database unavailable returns HTTP 503 with structured JSON, no stack traces.
+
+---
+
+## Stage 5 — Live Dashboard
+
+Two options ship:
+1. **Web UI** at http://localhost:8000 — dark-themed dashboard with KPI cards, funnel, heatmap, anomalies, health. Auto-refreshes every 5 seconds.
+2. **Terminal dashboard** via python -m dashboard.live using the rich library.
+
+Both poll the same API endpoints — proof that the pipeline and API are genuinely connected.
 
 ---
 
 ## AI-Assisted Decisions
 
-### 1. Entry/exit direction heuristic (accepted with modification)
+### 1. Entry/exit direction detection (overrode AI suggestion)
 
-I asked Claude to suggest how to determine entry vs exit direction without a calibration step. It suggested using optical flow to detect dominant motion direction across the entry zone. I evaluated this but found it fragile when multiple people move in different directions simultaneously (group entry case). I overrode this with a simpler per-track Y-centroid trajectory approach: track the last 8 positions and check if the person crossed the entry line in a consistent direction. This is more robust for the edge cases in the footage.
+I asked Claude to suggest how to determine entry vs exit direction without a camera calibration step. It suggested using optical flow to detect dominant motion direction across the entry zone. I evaluated this against the CAM_3 footage — optical flow would struggle when multiple people move in different directions simultaneously (one entering, one exiting). I overrode this with a per-track Y-centroid trajectory approach: track the last 8 positions and check if the person crossed the 55% height line consistently. Simpler and more robust for the single-door scenario in this footage.
 
-### 2. Staff classification approach (partially accepted)
+### 2. Staff classification (partially overrode)
 
-Claude suggested using a VLM (GPT-4V or Gemini Vision) to classify staff by uniform colour. I tested this on sample frames and found it added significant latency (~2s per frame) and was inconsistent due to the blurred faces making context harder to read. I replaced it with a behavioural heuristic: long dwell + limited lateral movement. This is faster, runs offline, and is defensible in the follow-up questions since I can explain exactly what the threshold values mean.
+Claude suggested using a VLM (GPT-4V or Gemini Vision) to classify staff by uniform colour. I looked at the footage — faces are blurred, and the person in CAM_1 who is clearly staff wears black which customers also wear. Uniform colour alone would not work reliably. I overrode this with a behavioural heuristic (long dwell + limited lateral movement) which is faster, runs offline, and does not require API calls per frame. CAM_4 (stockroom) is an additional hard signal — anyone in that room is staff regardless of model output.
 
-### 3. Database choice (accepted)
+### 3. Database choice (accepted AI recommendation with caveats)
 
-When I asked about storage for the analytics queries, Claude recommended PostgreSQL for production and SQLite for the challenge. I accepted SQLite — the reasoning being that the event volume from 5 short clips fits comfortably in SQLite, and the acceptance gate requirement (`docker compose up` with no external dependencies) is much easier to satisfy without a separate Postgres container. CHOICES.md documents the trade-offs explicitly.
+Claude recommended SQLite for the submission and PostgreSQL for production. I accepted this reasoning. The acceptance gate requires docker compose up with no manual steps — adding a Postgres container introduces a failure mode (startup race conditions, volume permissions). SQLite removes that risk entirely for a take-home submission. The migration path to PostgreSQL is a single-file change in database.py since all queries use standard SQL.

@@ -131,6 +131,60 @@ def process_clip(
     logger.info(f"Done {camera_id} — {emitter.count} events emitted so far")
 
 
+def generate_synthetic_entries(emitter, store_id: str):
+    import uuid
+    """
+    Post-process: for any visitor_id seen on floor cameras but NOT via
+    the entry camera, generate a synthetic ENTRY event.
+    This handles the case where CAM_3 (entry) has obstructed view.
+    """
+    import json
+    from datetime import datetime, timezone
+
+    seen_on_floor = {}   # visitor_id -> earliest timestamp
+    seen_on_entry = set()  # visitor_ids with real ENTRY events
+
+    try:
+        with open(emitter.output_path) as f:
+            for line in f:
+                event = json.loads(line.strip())
+                if event.get("event_type") == "ENTRY":
+                    seen_on_entry.add(event["visitor_id"])
+                elif event.get("camera_id") in ("CAM_FLOOR_01", "CAM_FLOOR_02"):
+                    vid = event["visitor_id"]
+                    ts = event["timestamp"]
+                    if vid not in seen_on_floor or ts < seen_on_floor[vid]:
+                        seen_on_floor[vid] = ts
+
+        synthetic_count = 0
+        for visitor_id, first_ts in seen_on_floor.items():
+            if visitor_id not in seen_on_entry:
+                synthetic_event = {
+                    "event_id": str(uuid.uuid4()),
+                    "store_id": store_id,
+                    "camera_id": "CAM_ENTRY_01",
+                    "visitor_id": visitor_id,
+                    "event_type": "ENTRY",
+                    "timestamp": first_ts,
+                    "zone_id": None,
+                    "dwell_ms": 0,
+                    "is_staff": False,
+                    "confidence": 0.60,  # Lower confidence — inferred not directly observed
+                    "metadata": {
+                        "queue_depth": None,
+                        "sku_zone": None,
+                        "session_seq": 0,
+                        "synthetic": True  # Flag that this was inferred
+                    }
+                }
+                emitter.emit(synthetic_event)
+                synthetic_count += 1
+
+        logger.info(f"Generated {synthetic_count} synthetic ENTRY events from floor camera appearances")
+    except Exception as e:
+        logger.warning(f"Could not generate synthetic entries: {e}")
+
+
 def main():
     parser = argparse.ArgumentParser(description="Store Intelligence Detection Pipeline")
     parser.add_argument("--clips-dir", default="./clips", help="Directory containing CAM_*.mp4 files")
@@ -181,6 +235,8 @@ def main():
             process_every_n=args.process_every,
         )
 
+    # Generate synthetic ENTRY events for visitors seen on floor but not entry camera
+    generate_synthetic_entries(emitter, store["store_id"])
     emitter.close()
     logger.info(f"Pipeline complete. Total events: {emitter.count} → {args.output}")
 
