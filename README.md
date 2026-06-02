@@ -6,13 +6,15 @@ End-to-end pipeline from raw CCTV footage to live store analytics API.
 
 ```bash
 # 1. Clone the repo
-git clone <your-repo-url> && cd store-intelligence
+git clone https://github.com/sanvviratthore/store-intelligence && cd store-intelligence
 
-# 2. Start the API
+# 2. Add video clips (download from HackerEarth challenge page)
+#    Create a clips/ folder and add: CAM_1.mp4, CAM_2.mp4, CAM_3.mp4, CAM_4.mp4, CAM_5.mp4
+mkdir clips
+# copy your downloaded CAM_*.mp4 files into the clips/ folder
+
+# 3. Start the API
 docker compose up --build -d
-
-# 3. Verify it's running
-curl http://localhost:8000/health
 
 # 4. Install detection pipeline dependencies (run locally, not in Docker)
 pip install -r pipeline/requirements.txt
@@ -20,6 +22,8 @@ pip install -r pipeline/requirements.txt
 # 5. Run the detection pipeline against your clips
 python -m pipeline.detect --clips-dir ./clips --output ./data/events.jsonl --api-url http://localhost:8000
 ```
+
+> **Note:** Video clips are not included in this repo per challenge rules. Download them from the HackerEarth challenge page and place in `./clips/`. The API works without clips — `docker compose up` starts everything and all endpoints respond immediately.
 
 After step 5, the API is live with real data from your clips.
 
@@ -50,7 +54,10 @@ store-intelligence/
 │   ├── store_layout.json
 │   └── pos_transactions.csv
 ├── tests/
-│   └── test_api.py
+│   ├── test_api.py
+│   ├── test_pipeline.py
+│   ├── test_metrics.py
+│   └── test_anomalies.py
 ├── docs/
 │   ├── DESIGN.md
 │   └── CHOICES.md
@@ -105,8 +112,8 @@ curl http://localhost:8000/stores/ST1008/metrics
 ## Running Tests
 
 ```bash
-pip install -r app/requirements.txt pytest
-pytest tests/ -v --tb=short
+pip install -r app/requirements.txt pytest httpx
+python -m pytest tests/ -v
 ```
 
 ---

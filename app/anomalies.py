@@ -70,31 +70,22 @@ def get_anomalies(store_id: str) -> dict:
                 "suggested_action": "Investigate queue wait time; consider staff reallocation"
             })
 
-    # 4. LOW_CONVERSION — fewer than 10% visitors purchasing
+    # 4. LOW_CONVERSION — use same POS-based conversion rate as metrics endpoint
+    from app.metrics import _compute_conversion_rate
+    conversion = _compute_conversion_rate(store_id, conn)
     total_visitors = conn.execute("""
         SELECT COUNT(DISTINCT visitor_id) FROM events
         WHERE store_id = ? AND event_type = 'ENTRY' AND is_staff = 0
     """, (store_id,)).fetchone()[0]
 
-    purchases = conn.execute("""
-        SELECT COUNT(DISTINCT visitor_id) FROM events
-        WHERE store_id = ? AND event_type = 'BILLING_QUEUE_JOIN' AND is_staff = 0
-          AND visitor_id NOT IN (
-              SELECT DISTINCT visitor_id FROM events
-              WHERE store_id = ? AND event_type = 'BILLING_QUEUE_ABANDON'
-          )
-    """, (store_id, store_id)).fetchone()[0]
-
-    if total_visitors >= 5:
-        conversion = purchases / total_visitors
-        if conversion < 0.10:
-            anomalies.append({
-                "anomaly_id": "CONVERSION_DROP",
-                "severity": "WARN",
-                "description": f"Conversion rate is {conversion:.1%} — below 10% threshold",
-                "detected_at": now.isoformat(),
-                "suggested_action": "Review pricing, promotions, and staff engagement"
-            })
+    if total_visitors >= 5 and conversion < 0.10:
+        anomalies.append({
+            "anomaly_id": "CONVERSION_DROP",
+            "severity": "WARN",
+            "description": f"Conversion rate is {conversion:.1%} — below 10% threshold",
+            "detected_at": now.isoformat(),
+            "suggested_action": "Review pricing, promotions, and staff engagement"
+        })
 
     return {
         "store_id": store_id,

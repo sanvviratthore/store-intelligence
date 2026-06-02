@@ -117,10 +117,12 @@ async def ingest(request: Request, payload: IngestRequest):
         raise HTTPException(status_code=503, detail={"error": str(e), "message": "Database unavailable"})
 
 
+STORE_ALIASES = {"STORE_BLR_002": "ST1008", "STORE_PURPLLE_001": "ST1008"}
+
 @app.get("/stores/{store_id}/metrics")
 async def metrics(store_id: str):
     try:
-        return get_metrics(store_id)
+        return get_metrics(STORE_ALIASES.get(store_id, store_id))
     except Exception as e:
         raise HTTPException(status_code=503, detail={"error": str(e)})
 
@@ -128,7 +130,7 @@ async def metrics(store_id: str):
 @app.get("/stores/{store_id}/funnel")
 async def funnel(store_id: str):
     try:
-        return get_funnel(store_id)
+        return get_funnel(STORE_ALIASES.get(store_id, store_id))
     except Exception as e:
         raise HTTPException(status_code=503, detail={"error": str(e)})
 
@@ -136,7 +138,7 @@ async def funnel(store_id: str):
 @app.get("/stores/{store_id}/heatmap")
 async def heatmap(store_id: str):
     try:
-        return get_heatmap(store_id)
+        return get_heatmap(STORE_ALIASES.get(store_id, store_id))
     except Exception as e:
         raise HTTPException(status_code=503, detail={"error": str(e)})
 
@@ -144,7 +146,7 @@ async def heatmap(store_id: str):
 @app.get("/stores/{store_id}/anomalies")
 async def anomalies(store_id: str):
     try:
-        return get_anomalies(store_id)
+        return get_anomalies(STORE_ALIASES.get(store_id, store_id))
     except Exception as e:
         raise HTTPException(status_code=503, detail={"error": str(e)})
 
@@ -165,17 +167,3 @@ async def dashboard():
     if os.path.exists(index):
         return FileResponse(index)
     return {"message": "Purplle Store Intelligence API", "docs": "/docs"}
-
-
-# Acceptance gate alias — STORE_BLR_002 maps to ST1008
-STORE_ALIASES = {
-    "STORE_BLR_002": "ST1008",
-    "STORE_PURPLLE_001": "ST1008",
-}
-
-@app.get("/stores/STORE_BLR_002/metrics")
-async def metrics_alias():
-    try:
-        return get_metrics("ST1008")
-    except Exception as e:
-        raise HTTPException(status_code=503, detail={"error": str(e)})

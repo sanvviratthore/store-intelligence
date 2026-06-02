@@ -193,15 +193,15 @@ async function updateHeatmap() {
       const dwell = (z.avg_dwell_ms / 1000).toFixed(0);
       return `<tr>
         <td>${z.zone_id}</td>
-        <td><div class="bar-wrap"><div class="bar-bg"><div class="bar-fill" style="width:${z.normalised_score}%"></div></div><span style="font-size:0.75rem;color:#888">${z.normalised_score}</span></div></td>
-        <td style="color:#c084fc">${z.visit_count}</td>
+        <td style="min-width:150px"><div class="bar-wrap"><div class="bar-bg" style="min-width:90px;flex-shrink:0"><div class="bar-fill" style="width:${z.normalised_score}%"></div></div><span style="font-size:0.75rem;color:#888;white-space:nowrap;margin-left:8px;min-width:28px;display:inline-block">${z.normalised_score}</span></div></td>
+        <td style="color:#c084fc;text-align:right;padding-right:8px">${z.visit_count}</td>
         <td style="color:#888">${dwell}s</td>
       </tr>`;
     }).join('');
     const conf = d.data_confidence ?? '?';
     const confColor = conf === 'HIGH' ? '#4ade80' : '#facc15';
     document.getElementById('heatmap-container').innerHTML = `
-      <table><thead><tr><th>Zone</th><th>Score</th><th>Visits</th><th>Avg Dwell</th></tr></thead>
+      <table style="width:100%"><thead><tr><th style="width:80px">Zone</th><th>Score</th><th style="width:60px;text-align:right">Visits</th><th style="width:80px;text-align:right">Avg Dwell</th></tr></thead>
       <tbody>${rows}</tbody></table>
       <div style="margin-top:10px;font-size:0.75rem;color:${confColor}">Data confidence: ${conf}</div>`;
   } catch(e) { console.error('heatmap', e); }
