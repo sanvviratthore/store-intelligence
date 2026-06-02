@@ -1,4 +1,5 @@
 from app.database import get_conn
+from app.metrics import _compute_conversion_rate
 
 
 def get_funnel(store_id: str) -> dict:
@@ -19,18 +20,14 @@ def get_funnel(store_id: str) -> dict:
 
     billing_visitors = conn.execute("""
         SELECT COUNT(DISTINCT visitor_id) FROM events
-        WHERE store_id = ? AND zone_id = 'BILLING' AND is_staff = 0
+        WHERE store_id = ? AND (zone_id = 'BILLING' OR camera_id = 'CAM_BILLING_01')
+          AND is_staff = 0
     """, (store_id,)).fetchone()[0]
 
-    # Purchases = visitors who joined billing queue and didn't abandon
-    purchases = conn.execute("""
-        SELECT COUNT(DISTINCT visitor_id) FROM events
-        WHERE store_id = ? AND event_type = 'BILLING_QUEUE_JOIN' AND is_staff = 0
-          AND visitor_id NOT IN (
-              SELECT DISTINCT visitor_id FROM events
-              WHERE store_id = ? AND event_type = 'BILLING_QUEUE_ABANDON'
-          )
-    """, (store_id, store_id)).fetchone()[0]
+    # Purchases = use same POS correlation as metrics endpoint
+    # so funnel Purchase count is consistent with conversion_rate
+    conversion_rate = _compute_conversion_rate(store_id, conn)
+    purchases = round(conversion_rate * entries) if entries > 0 else 0
 
     def drop(a, b):
         if a == 0:
