@@ -20,12 +20,12 @@ Live Dashboard (Web UI at localhost:8000 + terminal)
 
 ## Stage 1 — Camera Role Assignment
 
-The first thing I did before writing any detection code was manually inspect frames from each clip. The camera roles are not labelled in the filenames — I had to figure them out from the footage itself:
+The first thing I did before writing any detection code was manually inspect frames from each clip. The camera roles are not labelled in the filenames, I had to figure them out from the footage itself:
 
 - **CAM_3** → Entry/exit camera. Shows a glass partition door with a Purplle sunscreen poster. The threshold is narrow and the camera angle is top-down at roughly 45 degrees. This is where ENTRY and EXIT events come from.
 - **CAM_1** → Main floor, skincare side. Shows the left wall shelves (EB Korean, The Face Shop, Good Vibes, DermDoc, Minimalist, Aqualogica) and a central circular display stand.
 - **CAM_2** → Main floor, makeup side. Shows the right wall (Maybelline, Faces Canada, Lakme, Swiss Beauty, Renee NY Bae, Alps Goodness) and a makeup trial unit.
-- **CAM_5** → Billing counter. A laptop and barcode scanner are clearly visible on the counter — this is the POS terminal. This is where billing zone events come from.
+- **CAM_5** → Billing counter. A laptop and barcode scanner are clearly visible on the counter, this is the POS terminal. This is where billing zone events come from.
 - **CAM_4** → Stockroom. Purplle-branded cardboard boxes stacked on shelves, no customer-facing merchandise. Every person detected here is staff by definition.
 
 This visual inspection shaped the entire pipeline design. CAM_4 detections are all flagged is_staff=true without any ML classification needed.
@@ -40,9 +40,9 @@ Each clip is processed at every 5th frame (configurable via --process-every) to 
 
 **Entry/exit direction (CAM_3 specific):**
 
-The entry camera shows a narrow glass door. I set the entry line at 55% of frame height. A person's Y-centroid is tracked over 8 consecutive frames — if it moves from below the line to above it, an ENTRY event is emitted. The reverse produces an EXIT.
+The entry camera shows a narrow glass door. I set the entry line at 55% of frame height. A person's Y-centroid is tracked over 8 consecutive frames if it moves from below the line to above it, an ENTRY event is emitted. The reverse produces an EXIT.
 
-I originally tried 4 frames but got false positives from people pausing at the door. 8 frames requires more committed movement, which reduced false positives at the cost of some sensitivity. This is why only 2 ENTRY events were detected in the 2.3-minute clip — the footage is short and people visible are mostly already inside rather than crossing the threshold.
+I originally tried 4 frames but got false positives from people pausing at the door. 8 frames requires more committed movement, which reduced false positives at the cost of some sensitivity. This is why only 2 ENTRY events were detected in the 2.3-minute clip, the footage is short and people visible are mostly already inside rather than crossing the threshold.
 
 **Staff classification:**
 

@@ -14,11 +14,11 @@
 
 ### What AI Suggested
 
-Claude suggested YOLOv8m as a balance between speed and accuracy, and also suggested GPT-4V for zone classification since the footage has clear brand signage that a VLM could read. I tested the VLM idea — for zone classification it actually made sense since CAM_1 and CAM_2 clearly show brand names on the shelves. But the latency was prohibitive for a CPU-only machine processing 15,000+ frames.
+Claude suggested YOLOv8m as a balance between speed and accuracy, and also suggested GPT-4V for zone classification since the footage has clear brand signage that a VLM could read. I tested the VLM idea for zone classification it actually made sense since CAM_1 and CAM_2 clearly show brand names on the shelves. But the latency was prohibitive for a CPU-only machine processing 15,000+ frames.
 
 ### What I Chose and Why
 
-**YOLOv8n** with ByteTrack. My machine has no GPU. At every 5th frame, YOLOv8n processes roughly 840 frames per 2.3-minute clip in about 8 minutes on CPU. YOLOv8m would have taken over 30 minutes per clip — not practical for a submission deadline.
+**YOLOv8n** with ByteTrack. My machine has no GPU. At every 5th frame, YOLOv8n processes roughly 840 frames per 2.3-minute clip in about 8 minutes on CPU. YOLOv8m would have taken over 30 minutes per clip not practical for a submission deadline.
 
 The trade-off I accepted: YOLOv8n will miss some partially-occluded persons. I handled this by storing confidence scores on every event and surfacing data_confidence: LOW in the heatmap when sessions are below 20. Low confidence events are stored, not dropped — the reviewer can see the confidence distribution in the raw events.
 
@@ -36,7 +36,7 @@ The trade-off I accepted: YOLOv8n will miss some partially-occluded persons. I h
 
 ### What AI Suggested
 
-Claude initially suggested Option B (session aggregation) as simpler to query. I disagreed. If I aggregate at ingest, I lose the ability to detect BILLING_QUEUE_ABANDON — which requires knowing the time gap between a BILLING_QUEUE_JOIN and an EXIT without a following POS transaction. You can only compute that from the raw event sequence, not from a pre-aggregated session record.
+Claude initially suggested Option B (session aggregation) as simpler to query. I disagreed. If I aggregate at ingest, I lose the ability to detect BILLING_QUEUE_ABANDON which requires knowing the time gap between a BILLING_QUEUE_JOIN and an EXIT without a following POS transaction. You can only compute that from the raw event sequence, not from a pre-aggregated session record.
 
 ### What I Chose and Why
 
@@ -44,7 +44,7 @@ Claude initially suggested Option B (session aggregation) as simpler to query. I
 
 1. **Staff flagged, not excluded at ingest.** is_staff=true events are stored. Every metric query filters them out in SQL. This means if my staff classifier makes a mistake, I can rerun metrics without reprocessing the video.
 
-2. **Confidence never suppressed.** A detection with confidence=0.15 still gets stored. The system degrades gracefully — low confidence events contribute to the heatmap with a LOW confidence flag rather than being silently dropped. This is honest about what the model actually saw.
+2. **Confidence never suppressed.** A detection with confidence=0.15 still gets stored. The system degrades gracefully, low confidence events contribute to the heatmap with a LOW confidence flag rather than being silently dropped. This is honest about what the model actually saw.
 
 3. **event_id as UUIDv4 primary key.** Makes ingest idempotent by design. The pipeline can be rerun against the same clips without duplicating events.
 
@@ -72,6 +72,6 @@ Claude recommended PostgreSQL from the start, citing concurrent write safety and
 
 The event volume from 5 clips (618 events) fits trivially in SQLite. More importantly, the acceptance gate requires docker compose up with zero manual steps. On Windows specifically (which is my development machine), getting a Postgres container to start cleanly with the right volume permissions is a known pain point. SQLite eliminates that entire failure mode.
 
-**What breaks at scale (honest answer):** At 40 live stores sending events concurrently, the first thing that breaks is SQLite's global write lock. Two pipeline instances trying to ingest simultaneously will serialize and create a backlog. The fix is PostgreSQL with a partitioned events table by (store_id, date) and pre-aggregated materialized views refreshed every 60 seconds for the metrics endpoints. The current code is structured so this migration is a single-file change in database.py — all queries use standard SQL with no SQLite-specific syntax.
+**What breaks at scale (honest answer):** At 40 live stores sending events concurrently, the first thing that breaks is SQLite's global write lock. Two pipeline instances trying to ingest simultaneously will serialize and create a backlog. The fix is PostgreSQL with a partitioned events table by (store_id, date) and pre-aggregated materialized views refreshed every 60 seconds for the metrics endpoints. The current code is structured so this migration is a single-file change in database.py all queries use standard SQL with no SQLite-specific syntax.
 
 **Why I didn't add Postgres anyway:** Adding complexity I can't test properly under deadline pressure is worse than a known limitation I can explain clearly. A system that works simply is better than a system that almost works with unnecessary complexity.
