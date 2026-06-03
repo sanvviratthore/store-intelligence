@@ -80,6 +80,24 @@
   #last-update { color: #666; }
 
   .no-data { color: #444; font-style: italic; font-size: 0.85rem; padding: 12px 0; }
+
+  .floor-grid { display: grid; gap: 8px; width: 100%; margin-top: 12px; }
+  .floor-zone {
+    border-radius: 10px; padding: 14px 10px; text-align: center;
+    cursor: default; position: relative; transition: transform 0.2s;
+    border: 1px solid rgba(255,255,255,0.05);
+  }
+  .floor-zone:hover { transform: scale(1.03); z-index: 10; }
+  .floor-zone .zone-name { font-size: 0.75rem; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase; margin-bottom: 6px; }
+  .floor-zone .zone-score { font-size: 1.6rem; font-weight: 800; }
+  .floor-zone .zone-meta { font-size: 0.7rem; opacity: 0.75; margin-top: 4px; }
+  .floor-zone .zone-tooltip {
+    display: none; position: absolute; bottom: 110%; left: 50%; transform: translateX(-50%);
+    background: #1a1a2a; border: 1px solid #4a2fa0; border-radius: 8px;
+    padding: 8px 12px; font-size: 0.75rem; white-space: nowrap; z-index: 100;
+    color: #e0e0ff;
+  }
+  .floor-zone:hover .zone-tooltip { display: block; }
 </style>
 </head>
 <body>
@@ -87,11 +105,17 @@
 <header>
   <div>
     <h1>🏪 Purplle Store Intelligence</h1>
-    <div class="subtitle">Brigade Road, Bangalore · ST1008</div>
+    <div class="subtitle" id="store-subtitle">Brigade Road, Bangalore · ST1008</div>
   </div>
-  <div class="live-badge">
-    <div class="live-dot"></div>
-    LIVE · <span id="last-update">--</span>
+  <div style="display:flex;align-items:center;gap:12px">
+    <select id="store-select" onchange="switchStore(this.value)" style="background:#1a1a2a;color:#c084fc;border:1px solid #4a2fa0;border-radius:8px;padding:6px 12px;font-size:0.85rem;cursor:pointer">
+      <option value="ST1008">ST1008 — Brigade Bangalore</option>
+      <option value="ST1076">ST1076 — Mumbai Store</option>
+    </select>
+    <div class="live-badge">
+      <div class="live-dot"></div>
+      LIVE · <span id="last-update">--</span>
+    </div>
   </div>
 </header>
 
@@ -127,10 +151,28 @@
   </div>
 </div>
 
+<!-- Visual Floor Heatmap Grid -->
+<div style="padding:0 20px 20px">
+  <div class="card">
+    <h2>🏬 Store Floor Heatmap</h2>
+    <div id="floor-heatmap"><div class="no-data">Loading...</div></div>
+  </div>
+</div>
+
 <div class="refresh-info">Auto-refreshing every 5 seconds · <span id="last-update-bottom">--</span></div>
 
 <script>
-const STORE = 'ST1008';
+let STORE = 'ST1008';
+const STORE_NAMES = {
+  'ST1008': 'Brigade Road, Bangalore · ST1008',
+  'ST1076': 'Mumbai Store · ST1076'
+};
+
+function switchStore(storeId) {
+  STORE = storeId;
+  document.getElementById('store-subtitle').textContent = STORE_NAMES[storeId] || storeId;
+  refresh();
+}
 const BASE  = '';  // same origin
 
 async function fetchJSON(path) {
@@ -173,10 +215,10 @@ async function updateFunnel() {
     if (!stages.length) { document.getElementById('funnel-container').innerHTML = '<div class="no-data">No data</div>'; return; }
     const html = stages.map(s => {
       const dropColor = s.drop_off_pct > 50 ? 'bad' : s.drop_off_pct > 20 ? 'warn' : 'good';
-      const drop = s.drop_off_pct > 0 ? `<span class="drop ${dropColor}">↓${s.drop_off_pct.toFixed(1)}%</span>` : '';
-      return `<div class="funnel-stage">
-        <span class="name">${s.stage}</span>
-        <span class="count">${s.visitors}</span>
+      const drop = s.drop_off_pct > 0 ? `<span class="drop ${dropColor}" style="font-size:0.72rem;min-width:52px;text-align:right">↓${s.drop_off_pct.toFixed(1)}%</span>` : '<span style="min-width:52px;display:inline-block"></span>';
+      return `<div class="funnel-stage" style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+        <span class="name" style="flex:1;min-width:80px">${s.stage}</span>
+        <span class="count" style="min-width:40px;text-align:right">${s.visitors}</span>
         ${drop}
       </div>`;
     }).join('');
@@ -251,6 +293,104 @@ async function refresh() {
 
 refresh();
 setInterval(refresh, 5000);
+
+// Floor heatmap grid
+const STORE_LAYOUTS = {
+  'ST1008': [
+    { id: 'SKINCARE',  label: 'Skincare',   col: 1, row: 1, colspan: 1 },
+    { id: 'SUNCARE',   label: 'Suncare',    col: 2, row: 1, colspan: 1 },
+    { id: 'MAKEUP',    label: 'Makeup',     col: 3, row: 1, colspan: 1 },
+    { id: 'FRAGRANCE', label: 'Fragrance',  col: 1, row: 2, colspan: 1 },
+    { id: 'LIPS_EYES', label: 'Lips & Eyes',col: 3, row: 2, colspan: 1 },
+    { id: 'BILLING',   label: 'Billing',    col: 1, row: 3, colspan: 3 },
+  ],
+  'ST1076': [
+    { id: 'LEFT_SHELF',  label: 'Left Shelf',  col: 1, row: 1, colspan: 1 },
+    { id: 'RIGHT_SHELF', label: 'Right Shelf', col: 2, row: 1, colspan: 1 },
+    { id: 'BILLING',     label: 'Billing',     col: 1, row: 2, colspan: 2 },
+  ]
+};
+
+function scoreToColor(score) {
+  if (score === 0 || score === undefined) return 'rgba(30,30,50,0.8)';
+  if (score >= 80) return 'rgba(220,50,50,0.85)';
+  if (score >= 60) return 'rgba(220,120,30,0.85)';
+  if (score >= 40) return 'rgba(200,180,30,0.85)';
+  if (score >= 20) return 'rgba(50,150,100,0.85)';
+  return 'rgba(40,80,160,0.85)';
+}
+
+function scoreToTextColor(score) {
+  if (!score || score < 20) return '#8899cc';
+  return '#ffffff';
+}
+
+async function updateFloorHeatmap() {
+  try {
+    const d = await fetchJSON(`/stores/${STORE}/heatmap`);
+    const zones = d.zones || [];
+    const layout = STORE_LAYOUTS[STORE] || STORE_LAYOUTS['ST1008'];
+
+    // Build score lookup
+    const scoreMap = {};
+    const dwellMap = {};
+    const visitMap = {};
+    zones.forEach(z => {
+      scoreMap[z.zone_id] = z.normalised_score;
+      dwellMap[z.zone_id] = (z.avg_dwell_ms / 1000).toFixed(0);
+      visitMap[z.zone_id] = z.visit_count;
+    });
+
+    const maxCol = Math.max(...layout.map(z => z.col + (z.colspan||1) - 1));
+
+    let html = `<div class="floor-grid" style="grid-template-columns: repeat(${maxCol}, 1fr)">`;
+
+    layout.forEach(zone => {
+      const score = scoreMap[zone.id] || 0;
+      const dwell = dwellMap[zone.id] || '0';
+      const visits = visitMap[zone.id] || 0;
+      const bg = scoreToColor(score);
+      const textColor = scoreToTextColor(score);
+      const colSpan = zone.colspan > 1 ? `grid-column: span ${zone.colspan};` : '';
+
+      html += `
+        <div class="floor-zone" style="background:${bg};color:${textColor};${colSpan}">
+          <div class="zone-tooltip">
+            ${visits} visits · avg dwell ${dwell}s · score ${score}/100
+          </div>
+          <div class="zone-name">${zone.label}</div>
+          <div class="zone-score">${score}</div>
+          <div class="zone-meta">${visits} visits · ${dwell}s dwell</div>
+        </div>`;
+    });
+
+    html += `</div>
+    <div style="display:flex;gap:16px;margin-top:14px;font-size:0.72rem;flex-wrap:wrap">
+      <span style="color:#888">Heat scale:</span>
+      <span style="color:rgba(40,80,255,1)">■ Cold (0-20)</span>
+      <span style="color:rgba(50,150,100,1)">■ Low (20-40)</span>
+      <span style="color:rgba(200,180,30,1)">■ Medium (40-60)</span>
+      <span style="color:rgba(220,120,30,1)">■ Warm (60-80)</span>
+      <span style="color:rgba(220,50,50,1)">■ Hot (80-100)</span>
+    </div>`;
+
+    document.getElementById('floor-heatmap').innerHTML = html;
+  } catch(e) {
+    document.getElementById('floor-heatmap').innerHTML = '<div class="no-data">No heatmap data</div>';
+  }
+}
+
+// Hook into refresh
+const _origRefresh = refresh;
+async function refresh() {
+  await Promise.all([
+    updateMetrics(), updateFunnel(), updateHeatmap(),
+    updateAnomalies(), updateHealth(), updateFloorHeatmap()
+  ]);
+  const now = new Date().toLocaleTimeString();
+  document.getElementById('last-update').textContent = now;
+  document.getElementById('last-update-bottom').textContent = `Last updated: ${now}`;
+}
 </script>
 </body>
 </html>

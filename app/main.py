@@ -117,7 +117,7 @@ async def ingest(request: Request, payload: IngestRequest):
         raise HTTPException(status_code=503, detail={"error": str(e), "message": "Database unavailable"})
 
 
-STORE_ALIASES = {"STORE_BLR_002": "ST1008", "STORE_PURPLLE_001": "ST1008"}
+STORE_ALIASES = {"STORE_BLR_002": "ST1008", "STORE_PURPLLE_001": "ST1008", "store_1076": "ST1076"}
 
 @app.get("/stores/{store_id}/metrics")
 async def metrics(store_id: str):

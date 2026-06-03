@@ -25,15 +25,30 @@ def get_anomalies(store_id: str) -> dict:
         })
 
     # 2. DEAD_ZONE — any zone with no visits in last 30 minutes
-    known_zones = ["SKINCARE", "SUNCARE", "MAKEUP", "LIPS_EYES"]
-    cutoff = (now - timedelta(minutes=30)).isoformat()
+    # Use last event timestamp as reference (not wall clock) to avoid false
+    # positives when replaying historical footage
+    last_event_row = conn.execute("""
+        SELECT MAX(timestamp) as last_ts FROM events WHERE store_id = ?
+    """, (store_id,)).fetchone()
+    
+    if last_event_row and last_event_row["last_ts"]:
+        last_event_ts = datetime.fromisoformat(last_event_row["last_ts"])
+        if last_event_ts.tzinfo is None:
+            last_event_ts = last_event_ts.replace(tzinfo=timezone.utc)
+        reference_ts = last_event_ts  # Use last event as reference point
+    else:
+        reference_ts = now
+
+    known_zones = ["SKINCARE", "SUNCARE", "MAKEUP", "LIPS_EYES", 
+                   "LEFT_SHELF", "RIGHT_SHELF"]
+    cutoff = (reference_ts - timedelta(minutes=30)).isoformat()
+
     for zone in known_zones:
         recent = conn.execute("""
             SELECT COUNT(*) as cnt FROM events
             WHERE store_id = ? AND zone_id = ? AND timestamp > ? AND is_staff = 0
         """, (store_id, zone, cutoff)).fetchone()["cnt"]
 
-        # Only flag if we have some data but zone went quiet
         total_zone = conn.execute("""
             SELECT COUNT(*) as cnt FROM events
             WHERE store_id = ? AND zone_id = ? AND is_staff = 0

@@ -22,20 +22,31 @@ logger = logging.getLogger(__name__)
 
 # Camera role determines which events are emitted
 CAMERA_ROLES = {
+    # Store 1 (ST1008)
     "CAM_ENTRY_01":   "entry_exit",
     "CAM_FLOOR_01":   "main_floor",
     "CAM_FLOOR_02":   "main_floor",
     "CAM_BILLING_01": "billing",
     "CAM_STOCK_01":   "stockroom",
+    # Store 2 (ST1076)
+    "CAM1":  "entry_exit",
+    "CAM1B": "entry_exit",
+    "CAM2":  "main_floor",
+    "CAM6":  "billing",
 }
 
 STORE_ID = "ST1008"
 
 
-def parse_video_timestamp(cap: cv2.VideoCapture) -> datetime:
-    """Read the embedded OSD timestamp from the first frame via OCR fallback."""
-    # Fallback: use known recording date from footage metadata
-    return datetime(2026, 4, 10, 14, 40, 0, tzinfo=timezone.utc)
+# Per-store base timestamps derived from OSD timestamps in footage
+STORE_BASE_TIMESTAMPS = {
+    "ST1008": datetime(2026, 4, 10, 14, 40, 0, tzinfo=timezone.utc),   # 10/04/2026 20:10 IST
+    "ST1076": datetime(2026, 3, 8, 12, 57, 0, tzinfo=timezone.utc),    # 08/03/2026 18:27 IST (billing cam)
+}
+
+def parse_video_timestamp(cap: cv2.VideoCapture, store_id: str = "ST1008") -> datetime:
+    """Return base timestamp for the store derived from footage OSD."""
+    return STORE_BASE_TIMESTAMPS.get(store_id, datetime(2026, 4, 10, 14, 40, 0, tzinfo=timezone.utc))
 
 
 def frame_to_timestamp(base_ts: datetime, frame_idx: int, fps: float) -> datetime:
@@ -57,7 +68,7 @@ def process_clip(
     fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
-    base_ts = parse_video_timestamp(cap)
+    base_ts = parse_video_timestamp(cap, store_id)
     tracker = VisitorTracker(camera_id=camera_id, role=role)
     zone_clf = ZoneClassifier(layout=layout, camera_id=camera_id)
 
@@ -197,46 +208,47 @@ def main():
     with open(args.layout) as f:
         layout = json.load(f)
 
-    store = layout["stores"][0]
-
-    # Map camera_id -> file path
-    cam_map = {
-        cam["camera_id"]: str(Path(args.clips_dir) / cam["file"])
-        for cam in store["cameras"]
-    }
-
     model = YOLO("yolov8n.pt")  # Downloads automatically on first run
     emitter = EventEmitter(output_path=args.output, api_url=args.api_url)
 
-    # Process entry camera first (most important for entry/exit counts)
-    priority_order = [
-        "CAM_ENTRY_01",
-        "CAM_FLOOR_01",
-        "CAM_FLOOR_02",
-        "CAM_BILLING_01",
+    # Priority order — entry cameras first for better Re-ID
+    PRIORITY_ORDER = [
+        "CAM_ENTRY_01", "CAM1", "CAM1B",
+        "CAM_FLOOR_01", "CAM_FLOOR_02", "CAM2",
+        "CAM_BILLING_01", "CAM6",
         "CAM_STOCK_01",
     ]
 
-    for camera_id in priority_order:
-        if camera_id not in cam_map:
-            logger.warning(f"No clip found for {camera_id}, skipping")
-            continue
-        video_path = cam_map[camera_id]
-        if not Path(video_path).exists():
-            logger.warning(f"File not found: {video_path}")
-            continue
-        process_clip(
-            video_path=video_path,
-            camera_id=camera_id,
-            store_id=store["store_id"],
-            model=model,
-            emitter=emitter,
-            layout=store,
-            process_every_n=args.process_every,
-        )
+    # Process all stores in layout
+    for store in layout["stores"]:
+        store_id = store["store_id"]
+        cam_map = {
+            cam["camera_id"]: str(Path(args.clips_dir) / cam["file"])
+            for cam in store["cameras"]
+        }
+        logger.info(f"Processing store: {store_id} ({store['name']})")
 
-    # Generate synthetic ENTRY events for visitors seen on floor but not entry camera
-    generate_synthetic_entries(emitter, store["store_id"])
+        for camera_id in PRIORITY_ORDER:
+            if camera_id not in cam_map:
+                continue
+            video_path = cam_map[camera_id]
+            if not Path(video_path).exists():
+                logger.warning(f"File not found: {video_path}")
+                continue
+            process_clip(
+                video_path=video_path,
+                camera_id=camera_id,
+                store_id=store_id,
+                model=model,
+                emitter=emitter,
+                layout=store,
+                process_every_n=args.process_every,
+            )
+
+        # Generate synthetic ENTRY events from floor camera appearances
+        generate_synthetic_entries(emitter, store_id)
+        logger.info(f"Store {store_id} complete. Running total: {emitter.count} events")
+
     emitter.close()
     logger.info(f"Pipeline complete. Total events: {emitter.count} → {args.output}")
 

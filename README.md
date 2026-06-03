@@ -138,9 +138,15 @@ python -m pipeline.detect \
 
 ---
 
-## Store ID
+## Store IDs
 
-The single store in the dataset is: `ST1008`
+Two stores in the dataset:
+- **ST1008** — Brigade Road, Bangalore
+- **ST1076** — Mumbai store
+
+Check metrics at:
+- `http://localhost:8000/stores/ST1008/metrics`
+- `http://localhost:8000/stores/ST1076/metrics`
 
 ---
 
