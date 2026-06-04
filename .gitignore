@@ -1,6 +1,5 @@
 clips/
 data/events.db
-data/events.jsonl
 yolov8n.pt
 __pycache__/
 *.pyc
