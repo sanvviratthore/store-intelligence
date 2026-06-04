@@ -9,9 +9,8 @@ End-to-end pipeline from raw CCTV footage to live store analytics API.
 git clone https://github.com/sanvviratthore/store-intelligence && cd store-intelligence
 
 # 2. Add video clips (download from HackerEarth challenge page)
-#    Create a clips/ folder and add: CAM_1.mp4, CAM_2.mp4, CAM_3.mp4, CAM_4.mp4, CAM_5.mp4
 mkdir clips
-# copy your downloaded CAM_*.mp4 files into the clips/ folder
+# Copy all downloaded video files into the clips/ folder (see clip names below)
 
 # 3. Start the API
 docker compose up --build -d
@@ -25,8 +24,6 @@ python -m pipeline.detect --clips-dir ./clips --output ./data/events.jsonl --api
 
 > **Note:** Video clips are not included in this repo per challenge rules. Download them from the HackerEarth challenge page and place in `./clips/`. The API works without clips — `docker compose up` starts everything and all endpoints respond immediately.
 
-After step 5, the API is live with real data from your clips.
-
 ---
 
 ## Project Structure
@@ -34,33 +31,39 @@ After step 5, the API is live with real data from your clips.
 ```
 store-intelligence/
 ├── pipeline/
-│   ├── detect.py       # Main detection + tracking script (YOLOv8n + ByteTrack)
-│   ├── tracker.py      # Re-ID, entry/exit direction, staff classification
-│   ├── zones.py        # Zone classifier from store_layout.json
-│   ├── emit.py         # JSONL writer + API ingest client
+│   ├── detect.py        # Main detection + tracking script (YOLOv8n + ByteTrack)
+│   ├── tracker.py       # Re-ID, entry/exit direction, staff classification
+│   ├── zones.py         # Zone classifier from store_layout.json
+│   ├── emit.py          # JSONL writer + API ingest client
+│   ├── run.sh           # One-command pipeline runner
 │   └── requirements.txt
 ├── app/
-│   ├── main.py         # FastAPI entrypoint + middleware
-│   ├── models.py       # Pydantic event schema
-│   ├── database.py     # SQLite init and connection
-│   ├── ingestion.py    # Ingest + dedup logic
-│   ├── metrics.py      # Real-time metrics + POS correlation
-│   ├── funnel.py       # Conversion funnel
-│   ├── heatmap.py      # Zone heatmap (normalised 0–100)
-│   ├── anomalies.py    # Anomaly detection engine
-│   ├── health.py       # Health + stale feed detection
+│   ├── main.py          # FastAPI entrypoint + middleware
+│   ├── models.py        # Pydantic event schema
+│   ├── database.py      # SQLite init and connection
+│   ├── ingestion.py     # Ingest + dedup logic
+│   ├── metrics.py       # Real-time metrics + POS correlation
+│   ├── funnel.py        # Conversion funnel
+│   ├── heatmap.py       # Zone heatmap (normalised 0-100)
+│   ├── anomalies.py     # Anomaly detection engine
+│   ├── health.py        # Health + stale feed detection
+│   ├── static/
+│   │   └── index.html   # Live web dashboard
 │   └── requirements.txt
 ├── data/
-│   ├── store_layout.json
-│   └── pos_transactions.csv
+│   ├── store_layout.json      # Zone definitions for both stores
+│   ├── pos_transactions.csv   # POS transaction records
+│   └── sample_events.jsonl    # Reference event schema examples
 ├── tests/
 │   ├── test_api.py
 │   ├── test_pipeline.py
 │   ├── test_metrics.py
 │   └── test_anomalies.py
 ├── docs/
-│   ├── DESIGN.md
-│   └── CHOICES.md
+│   ├── DESIGN.md        # Architecture + AI-assisted decisions
+│   └── CHOICES.md       # 3 decisions with full reasoning
+├── dashboard/
+│   └── live.py          # Terminal dashboard (rich)
 ├── Dockerfile
 ├── docker-compose.yml
 └── README.md
@@ -75,66 +78,9 @@ store-intelligence/
 | POST | `/events/ingest` | Batch ingest up to 500 events. Idempotent by event_id |
 | GET | `/stores/{id}/metrics` | Unique visitors, conversion rate, dwell, queue, abandonment |
 | GET | `/stores/{id}/funnel` | Entry → Zone → Billing → Purchase funnel with drop-off % |
-| GET | `/stores/{id}/heatmap` | Zone frequency + dwell, normalised 0–100 |
+| GET | `/stores/{id}/heatmap` | Zone frequency + dwell, normalised 0-100 |
 | GET | `/stores/{id}/anomalies` | Active anomalies (queue spike, dead zone, conversion drop) |
 | GET | `/health` | Service status, last event per store, STALE_FEED warning |
-
-### Example: Ingest an event
-
-```bash
-curl -X POST http://localhost:8000/events/ingest \
-  -H "Content-Type: application/json" \
-  -d '{
-    "events": [{
-      "event_id": "550e8400-e29b-41d4-a716-446655440000",
-      "store_id": "ST1008",
-      "camera_id": "CAM_ENTRY_01",
-      "visitor_id": "VIS_abc123",
-      "event_type": "ENTRY",
-      "timestamp": "2026-04-10T14:40:00Z",
-      "zone_id": null,
-      "dwell_ms": 0,
-      "is_staff": false,
-      "confidence": 0.92,
-      "metadata": {"queue_depth": null, "sku_zone": null, "session_seq": 1}
-    }]
-  }'
-```
-
-### Example: Get store metrics
-
-```bash
-curl http://localhost:8000/stores/ST1008/metrics
-```
-
----
-
-## Running Tests
-
-```bash
-pip install -r app/requirements.txt pytest httpx
-python -m pytest tests/ -v
-```
-
----
-
-## Detection Pipeline Options
-
-```bash
-python -m pipeline.detect \
-  --clips-dir ./clips \           # Directory with CAM_*.mp4 files
-  --layout ./data/store_layout.json \
-  --output ./data/events.jsonl \  # Output events file
-  --api-url http://localhost:8000 \ # Optional: stream to API live
-  --process-every 5               # Process every 5th frame (CPU speed)
-```
-
-**Expected clip filenames:**
-- `CAM_1.mp4` → Main floor (skincare zone)
-- `CAM_2.mp4` → Main floor (makeup zone)
-- `CAM_3.mp4` → Entry/exit threshold
-- `CAM_4.mp4` → Stockroom (staff only)
-- `CAM_5.mp4` → Billing counter
 
 ---
 
@@ -144,38 +90,86 @@ Two stores in the dataset:
 - **ST1008** — Brigade Road, Bangalore
 - **ST1076** — Mumbai store
 
-Check metrics at:
-- `http://localhost:8000/stores/ST1008/metrics`
-- `http://localhost:8000/stores/ST1076/metrics`
+```bash
+http://localhost:8000/stores/ST1008/metrics
+http://localhost:8000/stores/ST1076/metrics
+http://localhost:8000/stores/STORE_BLR_002/metrics  # acceptance gate alias
+```
 
 ---
 
-## Architecture Notes
+## Expected Clip Filenames (place in ./clips/)
 
-- **No GPU required** — YOLOv8n runs on CPU. Processing all 5 clips takes ~15–20 minutes.
-- **Idempotent ingest** — Safe to run the detection pipeline multiple times; duplicate `event_id`s are silently skipped.
-- **Staff exclusion** — Staff events are stored with `is_staff=true` and excluded at query time (not at ingest), preserving the full audit trail.
-- See `docs/DESIGN.md` for full architecture and `docs/CHOICES.md` for decision rationale.
+**Store 1 — ST1008 (Brigade Road, Bangalore):**
+- `CAM_1_zone.mp4` → Main floor, skincare/suncare wall
+- `CAM_2_zone.mp4` → Main floor, makeup/cosmetics wall
+- `CAM_3_entry.mp4` → Entry/exit glass door threshold
+- `CAM_5_billing.mp4` → Billing counter with POS terminal
+
+**Store 2 — ST1076:**
+- `entry_1.mp4` → Primary entry camera
+- `entry_2.mp4` → Secondary entry camera
+- `zone.mp4` → Main floor zone
+- `billing_area.mp4` → Billing counter area
+
+---
+
+## Running Tests
+
+```bash
+pip install pytest httpx
+python -m pytest tests/ -v
+```
+
+49 tests covering: idempotency, staff exclusion, re-entry dedup, anomaly detection, funnel accuracy, zero-traffic handling.
+
+---
+
+## Detection Pipeline Options
+
+```bash
+python -m pipeline.detect \
+  --clips-dir ./clips \
+  --layout ./data/store_layout.json \
+  --output ./data/events.jsonl \
+  --api-url http://localhost:8000 \
+  --process-every 5
+```
+
+Or use the one-command runner:
+```bash
+bash pipeline/run.sh ./clips http://localhost:8000
+```
+
+---
 
 ## Live Dashboard
 
-Web dashboard available at: **http://localhost:8000**
+Web dashboard at: **http://localhost:8000**
 
-Auto-refreshes every 5 seconds showing:
-- Live visitor count and conversion rate
-- Conversion funnel with drop-off %
-- Zone heatmap normalised 0-100
+Features:
+- Store switcher (ST1008 ↔ ST1076)
+- Live KPI cards: visitors, conversion rate, queue depth, abandonment
+- Conversion funnel with drop-off percentages
+- Zone heatmap table (normalised 0-100) + visual floor grid
 - Active anomalies with severity and suggested actions
-- System health and feed lag
+- System health with STALE_FEED detection
+- OpenStreetMap with clickable store location pins
 
-Terminal dashboard (alternative):
+Terminal dashboard:
 ```bash
 pip install rich
 python -m dashboard.live
 ```
 
-## One-Command Pipeline
+---
 
-```bash
-bash pipeline/run.sh ./clips http://localhost:8000
-```
+## Architecture Notes
+
+- **No GPU required** — YOLOv8n runs on CPU. ~15-20 min to process all clips.
+- **Idempotent ingest** — duplicate `event_id`s are silently skipped, safe to rerun.
+- **Staff excluded at query time** — `is_staff=true` events stored but filtered in SQL.
+- **Two-store support** — ST1008 and ST1076 processed in a single pipeline run.
+- **Synthetic ENTRY events** — visitors detected on floor cameras but not entry camera get inferred ENTRY events (confidence 0.60) to handle obstructed entry views.
+
+See `docs/DESIGN.md` for architecture decisions and `docs/CHOICES.md` for trade-off reasoning.
