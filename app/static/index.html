@@ -4,10 +4,11 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Purplle Store Intelligence</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { background: #0f0f1a; color: #e0e0ff; font-family: 'Segoe UI', sans-serif; min-height: 100vh; }
-
   header {
     background: linear-gradient(135deg, #1a0a2e, #2d1b69);
     padding: 16px 24px;
@@ -23,81 +24,41 @@
   }
   .live-dot { width: 8px; height: 8px; background: #4ade80; border-radius: 50%; animation: pulse 1.5s infinite; }
   @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
-
   .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; padding: 20px; }
   .grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; padding: 0 20px 20px; }
-  .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; padding: 0 20px 20px; }
-
-  .card {
-    background: #16162a; border: 1px solid #2a2a4a;
-    border-radius: 12px; padding: 20px;
-  }
+  .card { background: #16162a; border: 1px solid #2a2a4a; border-radius: 12px; padding: 20px; }
   .card h2 { font-size: 0.75rem; color: #888; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px; }
   .metric-value { font-size: 2.2rem; font-weight: 700; color: #c084fc; }
   .metric-sub { font-size: 0.8rem; color: #666; margin-top: 4px; }
-
-  .good { color: #4ade80; }
-  .warn { color: #facc15; }
-  .bad  { color: #f87171; }
-
-  .section-title {
-    font-size: 0.85rem; color: #888; text-transform: uppercase;
-    letter-spacing: 1px; padding: 0 20px 8px;
-  }
-
+  .good { color: #4ade80; } .warn { color: #facc15; } .bad { color: #f87171; }
   table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
   th { color: #888; font-weight: 500; text-align: left; padding: 6px 0; border-bottom: 1px solid #2a2a4a; }
   td { padding: 8px 0; border-bottom: 1px solid #1a1a2a; }
-
   .bar-wrap { display: flex; align-items: center; gap: 8px; }
-  .bar-bg { flex: 1; background: #1a1a2a; border-radius: 4px; height: 8px; }
+  .bar-bg { flex: 1; min-width: 90px; flex-shrink: 0; background: #1a1a2a; border-radius: 4px; height: 8px; }
   .bar-fill { height: 8px; border-radius: 4px; background: linear-gradient(90deg, #7c3aed, #c084fc); transition: width 0.5s; }
-
-  .funnel-stage {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 10px 14px; margin: 6px 0; border-radius: 8px;
-    background: #1a1a30; border-left: 3px solid #7c3aed;
-  }
-  .funnel-stage .name { color: #c0b0ff; font-size: 0.875rem; }
-  .funnel-stage .count { font-size: 1.2rem; font-weight: 700; color: #e0e0ff; }
-  .funnel-stage .drop { font-size: 0.75rem; }
-
-  .anomaly {
-    padding: 12px; margin: 8px 0; border-radius: 8px;
-    border-left: 3px solid;
-  }
+  .funnel-stage { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 14px; margin: 6px 0; border-radius: 8px; background: #1a1a30; border-left: 3px solid #7c3aed; }
+  .funnel-stage .name { color: #c0b0ff; font-size: 0.875rem; flex: 1; min-width: 80px; }
+  .funnel-stage .count { font-size: 1.2rem; font-weight: 700; color: #e0e0ff; min-width: 40px; text-align: right; }
+  .funnel-stage .drop { font-size: 0.72rem; min-width: 52px; text-align: right; }
+  .anomaly { padding: 12px; margin: 8px 0; border-radius: 8px; border-left: 3px solid; }
   .anomaly.CRITICAL { border-color: #f87171; background: #2a1010; }
-  .anomaly.WARN     { border-color: #facc15; background: #2a2010; }
-  .anomaly.INFO     { border-color: #60a5fa; background: #101a2a; }
-  .anomaly .sev     { font-size: 0.7rem; font-weight: 700; letter-spacing: 1px; }
-  .anomaly .desc    { font-size: 0.8rem; color: #ccc; margin-top: 4px; }
-  .anomaly .action  { font-size: 0.75rem; color: #888; margin-top: 4px; font-style: italic; }
-
-  .health-ok   { color: #4ade80; }
-  .health-stale { color: #f87171; }
-
-  .refresh-info { text-align: center; padding: 12px; font-size: 0.75rem; color: #444; }
-  #last-update { color: #666; }
-
-  .no-data { color: #444; font-style: italic; font-size: 0.85rem; padding: 12px 0; }
-
+  .anomaly.WARN { border-color: #facc15; background: #2a2010; }
+  .anomaly.INFO { border-color: #60a5fa; background: #101a2a; }
+  .anomaly .sev { font-size: 0.7rem; font-weight: 700; letter-spacing: 1px; }
+  .anomaly .desc { font-size: 0.8rem; color: #ccc; margin-top: 4px; }
+  .anomaly .action { font-size: 0.75rem; color: #888; margin-top: 4px; font-style: italic; }
   .floor-grid { display: grid; gap: 8px; width: 100%; margin-top: 12px; }
-  .floor-zone {
-    border-radius: 10px; padding: 14px 10px; text-align: center;
-    cursor: default; position: relative; transition: transform 0.2s;
-    border: 1px solid rgba(255,255,255,0.05);
-  }
+  .floor-zone { border-radius: 10px; padding: 14px 10px; text-align: center; cursor: default; position: relative; transition: transform 0.2s; border: 1px solid rgba(255,255,255,0.05); }
   .floor-zone:hover { transform: scale(1.03); z-index: 10; }
   .floor-zone .zone-name { font-size: 0.75rem; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase; margin-bottom: 6px; }
   .floor-zone .zone-score { font-size: 1.6rem; font-weight: 800; }
   .floor-zone .zone-meta { font-size: 0.7rem; opacity: 0.75; margin-top: 4px; }
-  .floor-zone .zone-tooltip {
-    display: none; position: absolute; bottom: 110%; left: 50%; transform: translateX(-50%);
-    background: #1a1a2a; border: 1px solid #4a2fa0; border-radius: 8px;
-    padding: 8px 12px; font-size: 0.75rem; white-space: nowrap; z-index: 100;
-    color: #e0e0ff;
-  }
+  .floor-zone .zone-tooltip { display: none; position: absolute; bottom: 110%; left: 50%; transform: translateX(-50%); background: #1a1a2a; border: 1px solid #4a2fa0; border-radius: 8px; padding: 8px 12px; font-size: 0.75rem; white-space: nowrap; z-index: 100; color: #e0e0ff; }
   .floor-zone:hover .zone-tooltip { display: block; }
+  #store-map { height: 280px; border-radius: 10px; z-index: 1; }
+  .refresh-info { text-align: center; padding: 12px; font-size: 0.75rem; color: #444; }
+  .no-data { color: #444; font-style: italic; font-size: 0.85rem; padding: 12px 0; }
 </style>
 </head>
 <body>
@@ -119,7 +80,6 @@
   </div>
 </header>
 
-<!-- KPI Cards -->
 <div class="grid" id="kpi-grid">
   <div class="card"><h2>Unique Visitors</h2><div class="metric-value" id="kpi-visitors">--</div><div class="metric-sub">customer sessions</div></div>
   <div class="card"><h2>Conversion Rate</h2><div class="metric-value" id="kpi-conversion">--</div><div class="metric-sub">visitors who purchased</div></div>
@@ -127,35 +87,28 @@
   <div class="card"><h2>Abandonment Rate</h2><div class="metric-value" id="kpi-abandon">--</div><div class="metric-sub">left queue without purchase</div></div>
 </div>
 
-<!-- Funnel + Anomalies -->
 <div class="grid-2">
-  <div class="card">
-    <h2>🔻 Conversion Funnel</h2>
-    <div id="funnel-container"><div class="no-data">Loading...</div></div>
-  </div>
-  <div class="card">
-    <h2>⚠ Active Anomalies</h2>
-    <div id="anomaly-container"><div class="no-data">Loading...</div></div>
-  </div>
+  <div class="card"><h2>🔻 Conversion Funnel</h2><div id="funnel-container"><div class="no-data">Loading...</div></div></div>
+  <div class="card"><h2>⚠ Active Anomalies</h2><div id="anomaly-container"><div class="no-data">Loading...</div></div></div>
 </div>
 
-<!-- Heatmap + Health -->
 <div class="grid-2">
-  <div class="card">
-    <h2>🗺 Zone Heatmap</h2>
-    <div id="heatmap-container"><div class="no-data">Loading...</div></div>
-  </div>
-  <div class="card">
-    <h2>💚 System Health</h2>
-    <div id="health-container"><div class="no-data">Loading...</div></div>
-  </div>
+  <div class="card"><h2>🗺 Zone Heatmap</h2><div id="heatmap-container"><div class="no-data">Loading...</div></div></div>
+  <div class="card"><h2>💚 System Health</h2><div id="health-container"><div class="no-data">Loading...</div></div></div>
 </div>
 
-<!-- Visual Floor Heatmap Grid -->
 <div style="padding:0 20px 20px">
   <div class="card">
     <h2>🏬 Store Floor Heatmap</h2>
     <div id="floor-heatmap"><div class="no-data">Loading...</div></div>
+  </div>
+</div>
+
+<div style="padding:0 20px 20px">
+  <div class="card">
+    <h2>📍 Store Locations</h2>
+    <p style="font-size:0.8rem;color:#888;margin-bottom:12px">Click a pin to switch store dashboard</p>
+    <div id="store-map"></div>
   </div>
 </div>
 
@@ -172,11 +125,13 @@ function switchStore(storeId) {
   STORE = storeId;
   document.getElementById('store-subtitle').textContent = STORE_NAMES[storeId] || storeId;
   refresh();
+  if (_map && _markers) {
+    Object.entries(_markers).forEach(([s, mk]) => mk.setIcon(pinIcon(s === storeId)));
+  }
 }
-const BASE  = '';  // same origin
 
 async function fetchJSON(path) {
-  const r = await fetch(BASE + path);
+  const r = await fetch(path);
   return r.json();
 }
 
@@ -190,17 +145,14 @@ async function updateMetrics() {
   try {
     const d = await fetchJSON(`/stores/${STORE}/metrics`);
     document.getElementById('kpi-visitors').textContent = d.unique_visitors ?? 0;
-
     const cr = d.conversion_rate ?? 0;
     const crEl = document.getElementById('kpi-conversion');
     crEl.textContent = (cr * 100).toFixed(1) + '%';
     crEl.className = 'metric-value ' + colorRate(cr);
-
     const qd = d.current_queue_depth ?? 0;
     const qdEl = document.getElementById('kpi-queue');
     qdEl.textContent = qd;
     qdEl.className = 'metric-value ' + (qd > 3 ? 'bad' : qd > 1 ? 'warn' : 'good');
-
     const ar = d.abandonment_rate ?? 0;
     const arEl = document.getElementById('kpi-abandon');
     arEl.textContent = (ar * 100).toFixed(1) + '%';
@@ -215,12 +167,10 @@ async function updateFunnel() {
     if (!stages.length) { document.getElementById('funnel-container').innerHTML = '<div class="no-data">No data</div>'; return; }
     const html = stages.map(s => {
       const dropColor = s.drop_off_pct > 50 ? 'bad' : s.drop_off_pct > 20 ? 'warn' : 'good';
-      const drop = s.drop_off_pct > 0 ? `<span class="drop ${dropColor}" style="font-size:0.72rem;min-width:52px;text-align:right">↓${s.drop_off_pct.toFixed(1)}%</span>` : '<span style="min-width:52px;display:inline-block"></span>';
-      return `<div class="funnel-stage" style="display:flex;align-items:center;justify-content:space-between;gap:8px">
-        <span class="name" style="flex:1;min-width:80px">${s.stage}</span>
-        <span class="count" style="min-width:40px;text-align:right">${s.visitors}</span>
-        ${drop}
-      </div>`;
+      const drop = s.drop_off_pct > 0
+        ? `<span class="drop ${dropColor}" style="font-size:0.72rem;min-width:52px;text-align:right">↓${s.drop_off_pct.toFixed(1)}%</span>`
+        : '<span style="min-width:52px;display:inline-block"></span>';
+      return `<div class="funnel-stage"><span class="name">${s.stage}</span><span class="count">${s.visitors}</span>${drop}</div>`;
     }).join('');
     document.getElementById('funnel-container').innerHTML = html;
   } catch(e) { console.error('funnel', e); }
@@ -235,7 +185,7 @@ async function updateHeatmap() {
       const dwell = (z.avg_dwell_ms / 1000).toFixed(0);
       return `<tr>
         <td>${z.zone_id}</td>
-        <td style="min-width:150px"><div class="bar-wrap"><div class="bar-bg" style="min-width:90px;flex-shrink:0"><div class="bar-fill" style="width:${z.normalised_score}%"></div></div><span style="font-size:0.75rem;color:#888;white-space:nowrap;margin-left:8px;min-width:28px;display:inline-block">${z.normalised_score}</span></div></td>
+        <td style="min-width:150px"><div class="bar-wrap"><div class="bar-bg"><div class="bar-fill" style="width:${z.normalised_score}%"></div></div><span style="font-size:0.75rem;color:#888;white-space:nowrap;margin-left:8px;min-width:28px;display:inline-block">${z.normalised_score}</span></div></td>
         <td style="color:#c084fc;text-align:right;padding-right:8px">${z.visit_count}</td>
         <td style="color:#888">${dwell}s</td>
       </tr>`;
@@ -243,7 +193,7 @@ async function updateHeatmap() {
     const conf = d.data_confidence ?? '?';
     const confColor = conf === 'HIGH' ? '#4ade80' : '#facc15';
     document.getElementById('heatmap-container').innerHTML = `
-      <table style="width:100%"><thead><tr><th style="width:80px">Zone</th><th>Score</th><th style="width:60px;text-align:right">Visits</th><th style="width:80px;text-align:right">Avg Dwell</th></tr></thead>
+      <table><thead><tr><th>Zone</th><th>Score</th><th style="text-align:right">Visits</th><th>Avg Dwell</th></tr></thead>
       <tbody>${rows}</tbody></table>
       <div style="margin-top:10px;font-size:0.75rem;color:${confColor}">Data confidence: ${conf}</div>`;
   } catch(e) { console.error('heatmap', e); }
@@ -270,39 +220,25 @@ async function updateAnomalies() {
 async function updateHealth() {
   try {
     const d = await fetchJSON('/health');
-    const statusClass = d.status === 'healthy' ? 'health-ok' : 'health-stale';
+    const statusClass = d.status === 'healthy' ? 'good' : 'bad';
     let html = `<div class="${statusClass}" style="font-size:1.1rem;font-weight:700;margin-bottom:10px">${d.status?.toUpperCase()}</div>`;
-    html += `<div style="font-size:0.85rem;color:#888;margin-bottom:12px">Total events ingested: <span style="color:#c084fc">${d.total_events_ingested}</span></div>`;
+    html += `<div style="font-size:0.85rem;color:#888;margin-bottom:12px">Total events: <span style="color:#c084fc">${d.total_events_ingested}</span></div>`;
     (d.stores ?? []).forEach(s => {
-      const sc = s.status === 'OK' ? 'health-ok' : 'health-stale';
-      html += `<div style="font-size:0.8rem;margin:4px 0">
-        <span class="${sc}">● ${s.status}</span>
-        <span style="color:#888"> · lag ${s.lag_seconds?.toFixed(0)}s</span>
-      </div>`;
+      const sc = s.status === 'OK' ? 'good' : 'bad';
+      html += `<div style="font-size:0.8rem;margin:4px 0"><span class="${sc}">● ${s.status}</span> <span style="color:#888">· ${s.store_id} · lag ${s.lag_seconds?.toFixed(0)}s</span></div>`;
     });
     document.getElementById('health-container').innerHTML = html;
   } catch(e) { console.error('health', e); }
 }
 
-async function refresh() {
-  await Promise.all([updateMetrics(), updateFunnel(), updateHeatmap(), updateAnomalies(), updateHealth()]);
-  const now = new Date().toLocaleTimeString();
-  document.getElementById('last-update').textContent = now;
-  document.getElementById('last-update-bottom').textContent = `Last updated: ${now}`;
-}
-
-refresh();
-setInterval(refresh, 5000);
-
-// Floor heatmap grid
 const STORE_LAYOUTS = {
   'ST1008': [
-    { id: 'SKINCARE',  label: 'Skincare',   col: 1, row: 1, colspan: 1 },
-    { id: 'SUNCARE',   label: 'Suncare',    col: 2, row: 1, colspan: 1 },
-    { id: 'MAKEUP',    label: 'Makeup',     col: 3, row: 1, colspan: 1 },
-    { id: 'FRAGRANCE', label: 'Fragrance',  col: 1, row: 2, colspan: 1 },
-    { id: 'LIPS_EYES', label: 'Lips & Eyes',col: 3, row: 2, colspan: 1 },
-    { id: 'BILLING',   label: 'Billing',    col: 1, row: 3, colspan: 3 },
+    { id: 'SKINCARE',  label: 'Skincare',    col: 1, row: 1, colspan: 1 },
+    { id: 'SUNCARE',   label: 'Suncare',     col: 2, row: 1, colspan: 1 },
+    { id: 'MAKEUP',    label: 'Makeup',      col: 3, row: 1, colspan: 1 },
+    { id: 'FRAGRANCE', label: 'Fragrance',   col: 1, row: 2, colspan: 1 },
+    { id: 'LIPS_EYES', label: 'Lips & Eyes', col: 3, row: 2, colspan: 1 },
+    { id: 'BILLING',   label: 'Billing',     col: 1, row: 3, colspan: 3 },
   ],
   'ST1076': [
     { id: 'LEFT_SHELF',  label: 'Left Shelf',  col: 1, row: 1, colspan: 1 },
@@ -312,7 +248,7 @@ const STORE_LAYOUTS = {
 };
 
 function scoreToColor(score) {
-  if (score === 0 || score === undefined) return 'rgba(30,30,50,0.8)';
+  if (!score) return 'rgba(30,30,50,0.8)';
   if (score >= 80) return 'rgba(220,50,50,0.85)';
   if (score >= 60) return 'rgba(220,120,30,0.85)';
   if (score >= 40) return 'rgba(200,180,30,0.85)';
@@ -320,50 +256,33 @@ function scoreToColor(score) {
   return 'rgba(40,80,160,0.85)';
 }
 
-function scoreToTextColor(score) {
-  if (!score || score < 20) return '#8899cc';
-  return '#ffffff';
-}
-
 async function updateFloorHeatmap() {
   try {
     const d = await fetchJSON(`/stores/${STORE}/heatmap`);
     const zones = d.zones || [];
     const layout = STORE_LAYOUTS[STORE] || STORE_LAYOUTS['ST1008'];
-
-    // Build score lookup
-    const scoreMap = {};
-    const dwellMap = {};
-    const visitMap = {};
+    const scoreMap = {}, dwellMap = {}, visitMap = {};
     zones.forEach(z => {
       scoreMap[z.zone_id] = z.normalised_score;
       dwellMap[z.zone_id] = (z.avg_dwell_ms / 1000).toFixed(0);
       visitMap[z.zone_id] = z.visit_count;
     });
-
-    const maxCol = Math.max(...layout.map(z => z.col + (z.colspan||1) - 1));
-
+    const maxCol = Math.max(...layout.map(z => z.col + (z.colspan || 1) - 1));
     let html = `<div class="floor-grid" style="grid-template-columns: repeat(${maxCol}, 1fr)">`;
-
     layout.forEach(zone => {
       const score = scoreMap[zone.id] || 0;
       const dwell = dwellMap[zone.id] || '0';
       const visits = visitMap[zone.id] || 0;
       const bg = scoreToColor(score);
-      const textColor = scoreToTextColor(score);
+      const textColor = score >= 20 ? '#fff' : '#8899cc';
       const colSpan = zone.colspan > 1 ? `grid-column: span ${zone.colspan};` : '';
-
-      html += `
-        <div class="floor-zone" style="background:${bg};color:${textColor};${colSpan}">
-          <div class="zone-tooltip">
-            ${visits} visits · avg dwell ${dwell}s · score ${score}/100
-          </div>
-          <div class="zone-name">${zone.label}</div>
-          <div class="zone-score">${score}</div>
-          <div class="zone-meta">${visits} visits · ${dwell}s dwell</div>
-        </div>`;
+      html += `<div class="floor-zone" style="background:${bg};color:${textColor};${colSpan}">
+        <div class="zone-tooltip">${visits} visits · avg dwell ${dwell}s · score ${score}/100</div>
+        <div class="zone-name">${zone.label}</div>
+        <div class="zone-score">${score}</div>
+        <div class="zone-meta">${visits} visits · ${dwell}s dwell</div>
+      </div>`;
     });
-
     html += `</div>
     <div style="display:flex;gap:16px;margin-top:14px;font-size:0.72rem;flex-wrap:wrap">
       <span style="color:#888">Heat scale:</span>
@@ -373,24 +292,59 @@ async function updateFloorHeatmap() {
       <span style="color:rgba(220,120,30,1)">■ Warm (60-80)</span>
       <span style="color:rgba(220,50,50,1)">■ Hot (80-100)</span>
     </div>`;
-
     document.getElementById('floor-heatmap').innerHTML = html;
   } catch(e) {
     document.getElementById('floor-heatmap').innerHTML = '<div class="no-data">No heatmap data</div>';
   }
 }
 
-// Hook into refresh
-const _origRefresh = refresh;
 async function refresh() {
-  await Promise.all([
-    updateMetrics(), updateFunnel(), updateHeatmap(),
-    updateAnomalies(), updateHealth(), updateFloorHeatmap()
-  ]);
+  await Promise.all([updateMetrics(), updateFunnel(), updateHeatmap(), updateAnomalies(), updateHealth(), updateFloorHeatmap()]);
   const now = new Date().toLocaleTimeString();
   document.getElementById('last-update').textContent = now;
   document.getElementById('last-update-bottom').textContent = `Last updated: ${now}`;
 }
+
+refresh();
+setInterval(refresh, 5000);
+
+// Store Location Map (Leaflet + OpenStreetMap, no API key needed)
+const STORE_LOCATIONS = {
+  'ST1008': { lat: 12.9698, lng: 77.6012, name: 'Brigade Road, Bangalore', address: 'Brigade Road, Bangalore 560001' },
+  'ST1076': { lat: 19.0760, lng: 72.8777, name: 'Purplle Mumbai', address: 'Mumbai, Maharashtra' }
+};
+
+let _map = null;
+let _markers = {};
+
+function pinIcon(active) {
+  return L.divIcon({
+    className: '',
+    html: `<div style="width:16px;height:16px;background:${active ? '#c084fc' : '#7c3aed'};border-radius:50%;border:2px solid #fff;box-shadow:0 0 10px ${active ? '#c084fc' : '#7c3aed88'}"></div>`,
+    iconSize: [16, 16], iconAnchor: [8, 8]
+  });
+}
+
+function initStoreMap() {
+  if (_map || typeof L === 'undefined') return;
+  _map = L.map('store-map', { center: [15.5, 75.5], zoom: 5 });
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    attribution: '© OpenStreetMap © CARTO',
+    subdomains: 'abcd', maxZoom: 19
+  }).addTo(_map);
+  Object.entries(STORE_LOCATIONS).forEach(([sid, loc]) => {
+    const m = L.marker([loc.lat, loc.lng], { icon: pinIcon(sid === STORE) })
+      .addTo(_map)
+      .bindPopup(`<div style="color:#111;font-size:0.8rem"><strong>${loc.name}</strong><br>${loc.address}</div>`);
+    m.on('click', () => {
+      document.getElementById('store-select').value = sid;
+      switchStore(sid);
+    });
+    _markers[sid] = m;
+  });
+}
+
+setTimeout(initStoreMap, 800);
 </script>
 </body>
 </html>
